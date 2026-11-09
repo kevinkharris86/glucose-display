@@ -40,21 +40,13 @@ window.GD_CHRISTMAS = (() => {
     const dpr = Math.min(devicePixelRatio || 1,2);
     canvas.width = Math.round(width*dpr); canvas.height = Math.round(height*dpr);
     ctx.setTransform(dpr,0,0,dpr,0,0);
-    sizes = [Math.min(height*.29,width*.25),Math.min(height*.17,width*.15)];
-    floor = box('chartwrap').y - 3;
-    // Protect the full pulse envelope and drift of existing content.
-    const bg = box('bg');
-    protectedRects = [
-      {x:bg.x-bg.w*.08-10,y:bg.y-bg.h*.08-10,w:bg.w*1.16+20,h:bg.h*1.16+20},
-      box('side',12),box('chartwrap',2),box('clock',8),box('status',8),box('controls',8)
-    ].filter(Boolean);
     layoutBounds();
   }
   function init() {
     if (canvas) return;
     canvas = document.createElement('canvas'); canvas.id = 'christmas-animals';
     canvas.setAttribute('aria-hidden','true');
-    canvas.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;z-index:1;pointer-events:none;display:none';
+    canvas.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;display:none';
     document.body.insertBefore(canvas,document.getElementById('controls'));
     ctx = canvas.getContext('2d');
     window.addEventListener('resize', () => { scene = null; layout(); });
@@ -69,7 +61,7 @@ window.GD_CHRISTMAS = (() => {
   }
   // Segments carry their own frame sequences, rather than translating still photos.
   function track(who) {
-    let x = homes()[who], t = 0, dir = who ? -1 : 1;
+    let x = homes()[who], t = 0, dir = -1;
     const segments = [];
     const api = {
       segments,
@@ -79,6 +71,8 @@ window.GD_CHRISTMAS = (() => {
       },
       face(d) { dir = d; return api; },
       go(to) {
+        const edge=sizes[who]*.45/width;
+        to=Math.max(edge,Math.min(1-edge,to));
         const duration = Math.abs(to-x)*(who?26000:34000);
         if (duration < 1) return api;
         dir = to>x ? 1 : -1;
@@ -110,7 +104,7 @@ window.GD_CHRISTMAS = (() => {
     const choices = SCENES.filter(s => !recent.includes(s[0]));
     const selected = SCENES.find(s => s[0] === forced) || choices[Math.floor(Math.random()*choices.length)];
     const m = track(0), w = track(1); selected[1](m,w);
-    m.face(1).hold(14,500); w.face(-1).hold(8,500);
+    m.face(-1).hold(14,500); w.face(-1).hold(8,500);
     scene = {name:selected[0],start:now,tracks:[m.segments,w.segments],duration:Math.max(m.duration,w.duration)};
     canvas.dataset.scene = selected[0];
     recent.push(selected[0]); if (recent.length>6) recent.shift();
@@ -119,7 +113,7 @@ window.GD_CHRISTMAS = (() => {
   function sample(who,now) {
     const home = homes()[who];
     const idleFrame = who ? 8 : 14;
-    const base = {x:home,dir:who?-1:1,frame:idleFrame,hop:0};
+    const base = {x:home,dir:-1,frame:idleFrame,hop:0};
     if (sleeping) { base.frame = who?15:15; return base; }
     if (state !== 'ok') return base;
     if (scene) {
@@ -168,8 +162,7 @@ window.GD_CHRISTMAS = (() => {
     floor=box('chartwrap').y-3;
     sizes=[Math.min(height*.29,width*.25),Math.min(height*.17,width*.15)];
     homePositions=width<height?[.15,.85]:[.105,.90];
-    // Resting animals fit entirely into the free side spaces. During a stroll,
-    // the masks make them pass behind information instead of covering it.
+    // First calculate the previous fitted sizes, then apply the requested scale.
     const zones=protectedRects.slice(0,2);
     for(let who=0;who<2;who++) {
       const relevant=zones.filter(r=>r.y<floor && r.y+r.h>floor-sizes[who]*.84);
@@ -180,6 +173,16 @@ window.GD_CHRISTMAS = (() => {
         homePositions[who]=who?Math.max(homePositions[who],1-free/width/2):Math.min(homePositions[who],free/width/2);
       }
     }
+    sizes[0]*=2.5;
+    sizes[1]*=1.3;
+    // Millie's head faces the clear left edge at rest; her body may pass behind
+    // the number. Keep the full larger silhouette within the screen edges.
+    homePositions[0]=Math.min(.45*sizes[0]/width,1-.45*sizes[0]/width);
+    homePositions[1]=Math.min(homePositions[1],1-.45*sizes[1]/width);
+    // The number is painted above the animals by #app's existing z-index:1.
+    // Its actual glyphs cover the fur naturally, avoiding rectangular cutouts.
+    // Keep the supporting information, graph, header and controls fully clear.
+    protectedRects.shift();
   }
   function loop(now) {
     raf=0;

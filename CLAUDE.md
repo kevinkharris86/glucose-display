@@ -23,11 +23,12 @@ A small web app (`index.html` + `sprites.js`) that displays real-time Dexcom CGM
 ## FX system (Millie the golden retriever & Winston the Holland Lop)
 Seasonal decoration is the `FX` module near the bottom of `index.html`. Christmas animals use `christmas.js` and the illustrated sheets in `assets/christmas/`.
 
-**Safety rule: the original decoration stays in `#fx` behind `#app`.** The Christmas canvas sits above the display with `pointer-events:none`, below the controls and Settings. It erases its pixels over the number's full pulse envelope, supporting information, header, graph, and controls. Animals can pass behind those protected regions and never cover important information. FX code never changes polling, chart rendering, or the measurement layout. When a reading is low, stale or missing the characters go quiet; 9 pm–6:30 am they sleep and the layer dims. Keep it that way.
+**Safety rule: the original decoration and Christmas canvas stay behind `#app`.** The Christmas canvas has `pointer-events:none` and erases its pixels over supporting information, header, graph, and controls. The original number paints above the animals, allowing natural overlap at its corners without covering its strokes. FX code never changes polling, chart rendering, or the measurement layout. When a reading is low, stale or missing the characters go quiet; 9 pm–6:30 am they sleep and the layer dims. Keep it that way.
 
 ### Illustrated Christmas pack (approved November 2026)
 - Replaces the photo animals **only** for the Christmas theme; other seasons retain the existing characters.
 - Two transparent 4×4 sheets, 16 separately drawn frames per animal: eight walking/hopping phases plus eight gestures/rest poses. Mature proportions and restrained expressions, Santa hat for Millie and burgundy scarf for Winston.
+- Display scale: Millie is 2.5× the previous fitted size; Winston is 1.3×. Millie rests facing the clear left edge, with her body passing naturally behind the number. No measurement positions or sizes change.
 - `christmas.js` draws at about 12 fps using time-based frame selection and a lightweight canvas. Twelve scenes, 55–85 seconds between starts, with no repeat among the previous six. The number's new-reading pulse stays on.
 - The overlay is outside `#app`, never changes its DOM, CSS, number, information or chart layout, and allows taps to pass through. It pauses offscreen and honors Animations On/Off. Loading failures leave readings and polling working.
 - Tests: `node --test tools/christmas.test.cjs`. Local preview: `node tools/preview-server.cjs`, then `http://127.0.0.1:8201/?demo&theme=christmas&fast`. Force a vignette with `&xscene=crossing-paths`; force sleep with `&night`.
