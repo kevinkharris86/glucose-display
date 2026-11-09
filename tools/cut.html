@@ -1,0 +1,48 @@
+<!doctype html><meta charset="utf-8"><title>make</title>
+<style>body{background:#05070a;color:#fff;font:13px system-ui;margin:8px}#g{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end}figure{margin:0}img{display:block}figcaption{color:#9ab}</style>
+<div id="log">starting…</div><div id="g"></div>
+<script type="module">
+// name: [raw index, out height px, crop [x0,y0,x1,y1] | null, opts]
+const DEFS = {
+  w_sit: [0, 210], w_side: [2, 150, [.165, 0, 1, 1], { killRed: 1 }], w_up: [3, 250], w_peek: [4, 160],
+  m_stand: [10, 380], m_lie: [11, 250, [.185, 0, 1, .905]], m_toy: [9, 230], m_sleep: [7, 210],
+  b_mtongue: [6, 230, null, { disc: [.62, .41, .34] }], b_mlook: [8, 230, null, { disc: [.58, .56, .36] }],
+  b_mstick: [5, 230, null, { disc: [.36, .26, .34] }], b_wface: [4, 230, null, { disc: [.5, .30, .40] }]
+};
+const log = t => document.getElementById("log").textContent = t, meta = {};
+window.__status = "running";
+const load = src => new Promise((r, j) => { const i = new Image(); i.onload = () => r(i); i.onerror = j; i.src = src; });
+try {
+  for (const [name, [idx, H, crop, o = {}]] of Object.entries(DEFS)) {
+    log(name); const im = await load("/out/raw" + idx + ".png"), W0 = im.naturalWidth, H0 = im.naturalHeight;
+    const c = document.createElement("canvas"); c.width = W0; c.height = H0; const g = c.getContext("2d", { willReadFrequently: true }); g.drawImage(im, 0, 0);
+    let out;
+    if (o.disc) { // square crop around the face, for round portrait bubbles
+      const r = o.disc[2] * W0, cx = o.disc[0] * W0, cy = o.disc[1] * H0;
+      out = document.createElement("canvas"); out.width = out.height = H; const og = out.getContext("2d");
+      og.beginPath(); og.arc(H / 2, H / 2, H / 2, 0, 7); og.clip(); og.drawImage(c, cx - r, cy - r, 2 * r, 2 * r, 0, 0, H, H);
+    } else {
+      const d = g.getImageData(0, 0, W0, H0), p = d.data, cr = crop || [0, 0, 1, 1];
+      let x0 = W0, y0 = H0, x1 = 0, y1 = 0;
+      for (let y = 0; y < H0; y++) for (let x = 0; x < W0; x++) {
+        const i = (y * W0 + x) * 4, inside = x >= cr[0] * W0 && x <= cr[2] * W0 && y >= cr[1] * H0 && y <= cr[3] * H0;
+        if (!inside || p[i + 3] < 110 || (o.killRed && x < .2 * W0 && p[i] > 120 && p[i + 1] < 90 && p[i + 2] < 90)) { p[i + 3] = 0; continue; }
+        if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+      }
+      g.putImageData(d, 0, 0);
+      const bw = x1 - x0 + 1, bh = y1 - y0 + 1, s = H / bh, pad = 5, w = Math.round(bw * s);
+      const body = document.createElement("canvas"); body.width = w; body.height = H; const bg = body.getContext("2d"); bg.imageSmoothingQuality = "high"; bg.drawImage(c, x0, y0, bw, bh, 0, 0, w, H);
+      const sil = document.createElement("canvas"); sil.width = w; sil.height = H; const sg = sil.getContext("2d"); sg.drawImage(body, 0, 0); sg.globalCompositeOperation = "source-in"; sg.fillStyle = "#fff"; sg.fillRect(0, 0, w, H);
+      out = document.createElement("canvas"); out.width = w + pad * 2; out.height = H + pad * 2; const og = out.getContext("2d");
+      og.globalAlpha = .9; for (let a = 0; a < 16; a++) og.drawImage(sil, pad + Math.cos(a / 16 * 6.283) * 3.2, pad + Math.sin(a / 16 * 6.283) * 3.2);
+      og.globalAlpha = 1; og.drawImage(body, pad, pad);
+    }
+    const blob = await new Promise(r => out.toBlob(r, "image/webp", .88));
+    await fetch("/save/" + name + ".webp", { method: "POST", body: blob });
+    meta[name] = { w: out.width, h: out.height, kb: Math.round(blob.size / 1024) };
+    const f = document.createElement("figure"); f.innerHTML = `<img src="${URL.createObjectURL(blob)}"><figcaption>${name} ${out.width}x${out.height} ${meta[name].kb}kB</figcaption>`; document.getElementById("g").appendChild(f);
+  }
+  await fetch("/save/meta.json", { method: "POST", body: JSON.stringify(meta) });
+  window.__status = "done"; log("done " + JSON.stringify(meta));
+} catch (e) { window.__status = "error: " + (e.stack || e); log(window.__status); }
+</script>

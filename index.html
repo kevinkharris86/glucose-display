@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#05070a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Glucose Display</title>
+<style>
+:root{--bg:#05070a;--fg:#e8edf2;--muted:#76838f;--ok:#3ddc84;--high:#ffc233;--low:#ff4d5e;--accent:#4aa3ff;--c:var(--ok)}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+#app{position:fixed;inset:0;display:grid;grid-template-rows:auto 1fr 33vh;padding:2.5vh 3.5vw 2vh;transition:transform 3s ease}
+header{display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:3vh;height:6vh}
+#clock{font-variant-numeric:tabular-nums;color:var(--fg);opacity:.7;font-size:5.5vh;font-weight:300;letter-spacing:.02em}
+#status{display:flex;align-items:center;gap:1vh}
+#dot{width:1.4vh;height:1.4vh;border-radius:50%;background:var(--muted)}
+#dot.live{background:var(--ok);box-shadow:0 0 1.5vh var(--ok)}
+#dot.err{background:var(--low)}
+main{position:relative;display:flex;align-items:center;justify-content:center;gap:3.5vw;min-height:0}
+#glow{position:absolute;width:55vh;height:55vh;border-radius:50%;background:var(--c);opacity:.09;filter:blur(9vh);pointer-events:none;transition:background 1s}
+#bg{position:relative;font-size:min(46vh,31vw);font-weight:700;line-height:.86;color:var(--c);font-variant-numeric:tabular-nums;letter-spacing:-.035em;transition:color 1s,opacity 1s}
+#side{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:1.6vh}
+#arrow{width:min(19vh,13vw);height:min(19vh,13vw);color:var(--c);transition:transform .8s ease,color 1s}
+#delta{font-size:min(8vh,5.5vw);font-weight:600;font-variant-numeric:tabular-nums}
+#unit{font-size:min(3.4vh,2.4vw);color:var(--muted);text-transform:uppercase;letter-spacing:.12em}
+#age{font-size:min(4vh,2.8vw);color:var(--muted)}
+.stale #bg,.stale #arrow{opacity:.35}
+.stale #age{color:var(--low);font-weight:600}
+#chartwrap{position:relative;min-height:0}
+canvas{width:100%;height:100%;display:block}
+#msg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:4vh;color:var(--muted);text-align:center;width:80%}
+/* controls */
+#controls{position:fixed;right:2.5vw;bottom:3vh;display:flex;gap:1.5vh;opacity:0;pointer-events:none;transition:opacity .4s}
+body.showui #controls{opacity:1;pointer-events:auto}
+.btn{background:#1a222c;color:var(--fg);border:1px solid #2b3642;border-radius:1.6vh;padding:1.6vh 2.6vh;font-size:2.6vh;cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#04111f;font-weight:600}
+/* settings */
+#settings{position:fixed;inset:0;background:rgba(3,5,8,.92);display:none;align-items:center;justify-content:center;z-index:10;padding:2vh}
+#settings.open{display:flex}
+form{background:#111820;border:1px solid #243040;border-radius:2.4vh;padding:3.5vh 4vh;width:min(900px,96vw);max-height:96vh;overflow:auto;display:grid;grid-template-columns:1fr 1fr;gap:2.2vh 3vh;font-size:max(15px,2.3vh)}
+form h2{grid-column:1/-1;font-size:1.4em;font-weight:600}
+form p.note{grid-column:1/-1;color:var(--muted);font-size:.85em;line-height:1.45}
+label{display:flex;flex-direction:column;gap:.7vh;color:var(--muted);font-size:.9em}
+label.full{grid-column:1/-1}
+input,select{background:#05080c;color:var(--fg);border:1px solid #2b3642;border-radius:1vh;padding:1.3vh 1.5vh;font-size:1.05em;-webkit-user-select:text;user-select:text}
+.row{grid-column:1/-1;display:flex;gap:2vh;justify-content:flex-end;align-items:center}
+#formerr{flex:1;color:var(--low)}
+/* ---------- new-reading pulse (always on, even in simple mode) ---------- */
+#bg.pulse{animation:bgpulse 2.8s cubic-bezier(.4,0,.2,1)}
+@keyframes bgpulse{0%,100%{transform:scale(1)}30%,62%{transform:scale(1.13)}}
+/* ---------- FX layer: sits BEHIND #app so it can never cover readings ---------- */
+#app{z-index:1}
+#fx{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;transition:opacity 1.3s;--floor:35vh;--u:min(1vh,.68vw)}
+body.simple #fx{display:none}
+#fx.swap{opacity:0}
+#fx.night{opacity:.5}
+#fx-sky,#fx-amb,#fx-decor,#fx-stage{position:absolute;inset:0}
+#fx-decor{opacity:.85}
+body:not(.simple) #bg,body:not(.simple) #side,body:not(.simple) header{text-shadow:0 0 1.6vh var(--bg),0 0 .6vh var(--bg),0 0 .3vh var(--bg)}
+.ch{position:absolute;left:0;bottom:var(--floor);width:0;height:0;will-change:transform}
+.ch-y{position:absolute;left:0;bottom:0;width:0;height:0}
+.ch-f{position:absolute;bottom:0;transform-origin:50% 100%}
+.prop svg,.dec svg{display:block;width:100%;height:auto;overflow:visible}
+/* characters are photo cutouts: .ch (x) > .ch-y (jump) > .ch-f (flip) > .spr-t (lean) > .spr (looping motion) */
+.spr-t{transform-origin:50% 100%;transition:transform .45s ease}
+.spr{position:relative;transform-origin:50% 100%;animation:s-breathe 3.8s ease-in-out infinite}
+.spr img{display:none;width:100%;height:auto}
+.spr img.on{display:block}
+.spr .acc{position:absolute;left:0;top:0;width:100%;overflow:visible}
+#winston .spr{animation-duration:2.6s}
+@keyframes s-breathe{50%{transform:scale(1.012,1.024)}}
+.ch.asleep .spr{animation:s-sleep 4.6s ease-in-out infinite}
+@keyframes s-sleep{50%{transform:scale(1.02,1.05)}}
+.ch.pant .spr{animation:s-breathe .5s ease-in-out infinite}
+.ch.wag .spr{animation:s-wig .2s ease-in-out infinite alternate}
+@keyframes s-wig{from{transform:rotate(-1.6deg) translateX(-.8%)}to{transform:rotate(1.6deg) translateX(.8%)}}
+.ch.chew .spr,.ch.groom .spr{animation:s-nod .26s ease-in-out infinite alternate}
+@keyframes s-nod{to{transform:translateY(1.5%) scale(1.02,.975)}}
+.ch.twitch .spr{animation:s-shake .12s ease-in-out 4 alternate}
+.ch.shake .spr{animation:s-shake .1s ease-in-out 9 alternate}
+@keyframes s-shake{from{transform:rotate(-3.5deg)}to{transform:rotate(3.5deg)}}
+.ch.walk .spr{animation:s-trot .44s ease-in-out infinite}
+.ch.run .spr{animation:s-trot .27s ease-in-out infinite}
+@keyframes s-trot{0%,100%{transform:translateY(0) rotate(-2.5deg)}50%{transform:translateY(-3.5%) rotate(2.5deg)}}
+.ch.hop .ch-y{animation:w-hop .42s ease-in-out infinite}
+.ch.hop .spr{animation:s-hop .42s ease-in-out infinite}
+.ch.hop.fast .ch-y,.ch.hop.fast .spr{animation-duration:.3s}
+@keyframes w-hop{0%,100%{transform:translateY(0)}45%{transform:translateY(calc(var(--u)*-3.2))}}
+@keyframes s-hop{0%,100%{transform:rotate(0) scale(1.05,.93)}30%{transform:rotate(-9deg) scale(.96,1.06)}70%{transform:rotate(6deg) scale(1)}}
+.ch.tilt .spr-t{transform:rotate(-7deg)}
+.ch.lookup .spr-t{transform:rotate(-4deg) scale(.98,1.04)}
+.ch.sniff .spr-t{transform:rotate(5deg) scale(1.03,.95)}
+.ch.bow .spr-t{transform:scale(1.07,.88)}
+.spr-t.pop{animation:s-pop .34s ease-out}
+@keyframes s-pop{0%{transform:scale(.86,1.12)}55%{transform:scale(1.06,.95)}100%{transform:scale(1)}}
+.medal{position:absolute;border-radius:50%;overflow:hidden;background:#141c26;box-shadow:0 0 0 calc(var(--u)*.45) #fff,0 0 calc(var(--u)*2.5) rgba(0,0,0,.6)}
+.medal img{display:block;width:100%;height:100%}
+/* props, emotes, particles, decor */
+.prop{position:absolute;left:0;bottom:var(--floor);will-change:transform}
+.prop.soft{opacity:.4}
+.grow svg{transform-origin:50% 100%;animation:p-grow .8s ease-out both}
+@keyframes p-grow{from{transform:scale(0)}}
+.waddle svg{transform-origin:50% 100%;animation:p-wad .34s ease-in-out infinite alternate}
+@keyframes p-wad{from{transform:rotate(-5deg)}to{transform:rotate(5deg)}}
+.flit svg{animation:p-flit .5s ease-in-out infinite alternate}
+@keyframes p-flit{to{transform:translateY(-18%)}}
+.flap{transform-origin:100% 50%;animation:p-flap .2s ease-in-out infinite alternate}
+.flap.r{transform-origin:0 50%}
+@keyframes p-flap{to{transform:scaleX(.25)}}
+.flapv{transform-origin:50% 100%;animation:p-flapv .2s ease-in-out infinite alternate}
+@keyframes p-flapv{to{transform:scaleY(-.5)}}
+.emo{position:absolute;font-size:calc(var(--u)*4.4);font-weight:800;line-height:1;white-space:nowrap;text-shadow:0 0 .6vh rgba(0,0,0,.7)}
+.spark{position:absolute;width:calc(var(--u)*.9);height:calc(var(--u)*.9);border-radius:50%}
+.wash{position:absolute;top:0;left:0;width:70vw;height:100%;opacity:.2}
+.pt{position:absolute;top:-6vh;will-change:transform;animation:pt-fall linear infinite}
+.pt i{display:block;border-radius:50%;background:currentColor;color:#fff;opacity:.75;animation:pt-sway ease-in-out infinite alternate}
+.pt i svg{display:block;width:100%;height:100%}
+@keyframes pt-fall{to{transform:translateY(114vh)}}
+@keyframes pt-sway{from{transform:translateX(-2.5vw) rotate(-50deg)}to{transform:translateX(2.5vw) rotate(50deg)}}
+.pt.rise{top:auto;bottom:-6vh;animation-name:pt-rise}
+@keyframes pt-rise{to{transform:translateY(-114vh)}}
+.pt.twk{animation:pt-twk ease-in-out infinite alternate}
+.pt.twk i{animation:none}
+@keyframes pt-twk{from{opacity:.08;transform:scale(.6)}to{opacity:.9;transform:scale(1)}}
+.pt.drift{animation:pt-drift ease-in-out infinite alternate}
+@keyframes pt-drift{0%{transform:translate(0,0);opacity:.1}50%{opacity:1}100%{transform:translate(9vw,-9vh);opacity:.15}}
+.pt.free{animation:none;top:0;left:0}
+.p-leaf{border-radius:0 70% 0 70%!important}.p-petal{border-radius:80% 0 80% 0!important}.p-confetti{border-radius:15%!important}
+.p-heart,.p-shamrock{background:none!important}
+.p-firefly{color:#E9FF7A!important;box-shadow:0 0 1.2vh #D6FF4A}
+.dec{position:absolute}
+.mounds{position:absolute;left:0;bottom:var(--floor);width:100%;height:2.4vh}
+.lights{position:absolute;left:0;top:0;width:100%;height:3vh}
+.lights i{position:absolute;width:1.05vh;height:1.4vh;border-radius:50%;animation:lt 1.6s ease-in-out infinite alternate}
+.twk{animation:lt 1.8s ease-in-out infinite alternate}
+@keyframes lt{from{opacity:.3}to{opacity:1}}
+@media (orientation:portrait){
+  #fx{--floor:30vh}
+  #app{grid-template-rows:auto 1fr 28vh}
+  main{flex-direction:column;gap:3vh}
+  #bg{font-size:min(30vh,40vw)}
+  #side{flex-direction:row;align-items:center;gap:4vw}
+  #arrow{width:12vw;height:12vw}
+  #delta{font-size:7vw}#unit{font-size:3vw}#age{font-size:3.6vw}
+  form{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div id="status"><span id="dot"></span><span id="statustext">Starting…</span></div>
+    <div id="clock">--:--</div>
+  </header>
+  <main>
+    <div id="glow"></div>
+    <div id="bg">---</div>
+    <div id="side">
+      <svg id="arrow" viewBox="0 0 100 100" aria-hidden="true"></svg>
+      <div id="delta"></div>
+      <div id="unit">mg/dL</div>
+      <div id="age"></div>
+    </div>
+  </main>
+  <div id="chartwrap"><canvas id="chart"></canvas><div id="msg"></div></div>
+</div>
+
+<div id="controls">
+  <button class="btn" id="fxbtn">Animations: On</button>
+  <button class="btn" id="fsbtn">Full screen</button>
+  <button class="btn" id="setbtn">Settings</button>
+</div>
+
+<div id="settings">
+  <form id="form" autocomplete="on">
+    <h2>Glucose Display settings</h2>
+    <label>Dexcom username (phone numbers need +1)<input id="f_user" autocomplete="username" required></label>
+    <label>Dexcom password<input id="f_pass" type="password" autocomplete="current-password" required></label>
+    <label>Region<select id="f_region"><option value="us">United States</option><option value="ous">Outside US</option></select></label>
+    <label>Units<select id="f_units"><option value="mg">mg/dL</option><option value="mmol">mmol/L</option></select></label>
+    <label>Low limit (mg/dL)<input id="f_low" type="number" min="40" max="150" value="70"></label>
+    <label>High limit (mg/dL)<input id="f_high" type="number" min="120" max="400" value="180"></label>
+    <label>Graph hours<select id="f_hours"><option>3</option><option selected>6</option><option>12</option><option>24</option></select></label>
+    <label>Screen burn-in protection<select id="f_shift"><option value="1">On (small drift)</option><option value="0">Off</option></select></label>
+    <label>Display style<select id="f_simple"><option value="0">Animated (Millie &amp; Winston)</option><option value="1">Simple (no animations)</option></select></label>
+    <label>Theme<select id="f_theme"><option value="auto">Automatic (by date)</option></select></label>
+    <p class="note">Use the Dexcom account of the person wearing the sensor, with Share turned on in their Dexcom app. Your login is saved only in this browser on this device and sent only to Dexcom. This is a convenience display, not a medical device — keep the official Dexcom app for alerts.</p>
+    <div class="row"><span id="formerr"></span><button type="button" class="btn" id="cancel">Cancel</button><button type="submit" class="btn primary">Save &amp; connect</button></div>
+  </form>
+</div>
+
+<script src="sprites.js"></script>
+<script>
+"use strict";
+const APP_ID = "d89443d2-327c-4a6f-89e5-496bbb0317db";
+const SERVERS = { us: "https://share2.dexcom.com", ous: "https://shareous1.dexcom.com" };
+const TRENDS = { // name -> [rotation deg (0 = right), double?, mg/dL per min label]
+  DoubleUp:[-90,true], SingleUp:[-90,false], FortyFiveUp:[-45,false], Flat:[0,false],
+  FortyFiveDown:[45,false], SingleDown:[90,false], DoubleDown:[90,true]
+};
+const TREND_NUM = [null,"DoubleUp","SingleUp","FortyFiveUp","Flat","FortyFiveDown","SingleDown","DoubleDown"];
+const DEMO = new URLSearchParams(location.search).has("demo");
+const $ = id => document.getElementById(id);
+
+let cfg = Object.assign({ user:"", pass:"", region:"us", units:"mg", low:70, high:180, hours:6, shift:"1", simple:"0", theme:"auto" },
+  JSON.parse(localStorage.getItem("gd.cfg") || "{}"));
+let sessionId = null, data = [], pollTimer = null, authBlocked = false;
+
+/* ---------- Dexcom Share ---------- */
+async function post(path, body) {
+  const r = await fetch(SERVERS[cfg.region] + "/ShareWebServices/Services/" + path, {
+    method: "POST", headers: { "Content-Type": "application/json", "Accept": "application/json" },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const t = await r.text(); let j; try { j = JSON.parse(t); } catch { j = t; }
+  if (!r.ok) { const e = new Error((j && j.Message) || ("HTTP " + r.status)); e.code = j && j.Code; throw e; }
+  return j;
+}
+async function login() {
+  const accountId = await post("General/AuthenticatePublisherAccount", { accountName: cfg.user, password: cfg.pass, applicationId: APP_ID });
+  const sid = await post("General/LoginPublisherAccountById", { accountId, password: cfg.pass, applicationId: APP_ID });
+  if (!sid || /^0{8}-/.test(sid)) throw Object.assign(new Error("Login failed"), { code: "AccountPasswordInvalid" });
+  sessionId = sid;
+}
+async function fetchReadings() {
+  const mins = 1440, max = 288;
+  return post(`Publisher/ReadPublisherLatestGlucoseValues?sessionId=${sessionId}&minutes=${mins}&maxCount=${max}`);
+}
+function parse(list) {
+  return list.map(x => ({
+    t: +String(x.WT || x.ST || x.DT).match(/\d{10,}/)[0],
+    v: x.Value,
+    trend: typeof x.Trend === "number" ? TREND_NUM[x.Trend] : x.Trend
+  })).sort((a, b) => a.t - b.t);
+}
+function demoData() {
+  const now = Date.now(), out = [];
+  for (let i = 287; i >= 0; i--) {
+    const t = now - i * 300000 - 90000;
+    const v = Math.round(135 + 55 * Math.sin(t / 5.4e6) + 22 * Math.sin(t / 1.3e6));
+    out.push({ t, v });
+  }
+  out.forEach((p, i) => { const d = i ? p.v - out[i - 1].v : 0;
+    p.trend = d > 9 ? "DoubleUp" : d > 5 ? "SingleUp" : d > 2 ? "FortyFiveUp" : d < -9 ? "DoubleDown" : d < -5 ? "SingleDown" : d < -2 ? "FortyFiveDown" : "Flat"; });
+  return out;
+}
+
+async function poll() {
+  clearTimeout(pollTimer);
+  let next = 60000;
+  try {
+    if (DEMO) { data = demoData(); setStatus("live", "Demo data"); }
+    else {
+      if (!cfg.user || !cfg.pass) { setStatus("", "Not set up"); openSettings(); return; }
+      if (authBlocked) return;
+      if (!sessionId) { setStatus("", "Signing in…"); await login(); }
+      let raw;
+      try { raw = await fetchReadings(); }
+      catch (e) { if (/Session/i.test(e.code || e.message)) { sessionId = null; await login(); raw = await fetchReadings(); } else throw e; }
+      data = parse(raw);
+      setStatus("live", "Dexcom Share");
+      // Dexcom posts every 5 min — poll ~20 s after the next reading is due
+      const last = data[data.length - 1];
+      if (last) { const due = last.t + 300000 + 20000 - Date.now(); next = due > 15000 && due < 300000 ? due : 60000; }
+    }
+  } catch (e) {
+    const c = String(e.code || e.message);
+    if (/Password|AccountNotFound|AuthenticateAccount|Login failed|MaxAttempts/i.test(c)) {
+      authBlocked = true; sessionId = null;
+      setStatus("err", "Sign-in failed");
+      showMsg("Dexcom sign-in failed. Check the username/password in Settings.");
+      openSettings("Dexcom rejected the login (" + c + "). Check the details. Phone-number usernames need +1.");
+      return;
+    }
+    setStatus("err", "Offline — retrying");
+    next = 30000;
+  }
+  render();
+  pollTimer = setTimeout(poll, next);
+}
+
+/* ---------- Display ---------- */
+const fmt = v => cfg.units === "mmol" ? (v / 18.0182).toFixed(1) : String(Math.round(v));
+const colorFor = v => v < cfg.low ? "var(--low)" : v > cfg.high ? "var(--high)" : "var(--ok)";
+const hex = { "var(--low)":"#ff4d5e", "var(--high)":"#ffc233", "var(--ok)":"#3ddc84" };
+
+function setStatus(cls, text) { $("dot").className = cls; $("statustext").textContent = text; }
+function showMsg(t) { $("msg").textContent = t || ""; }
+
+function arrowSvg(trend) {
+  const tr = TRENDS[trend];
+  if (!tr) return '<text x="50" y="66" text-anchor="middle" font-size="48" fill="currentColor">?</text>';
+  const one = 'M14 50 H70 M50 28 L74 50 L50 72';
+  const path = tr[1]
+    ? '<path d="M8 38 H62 M44 18 L66 38 L44 58" /><path d="M8 66 H62 M44 46 L66 66 L44 86" />'
+    : `<path d="${one}"/>`;
+  return `<g fill="none" stroke="currentColor" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" transform="rotate(${tr[0]} 50 50)">${path}</g>`;
+}
+
+function render() {
+  const last = data[data.length - 1];
+  const app = $("app");
+  $("unit").textContent = cfg.units === "mmol" ? "mmol/L" : "mg/dL";
+  if (!last) { $("bg").textContent = "---"; $("arrow").innerHTML = ""; $("delta").textContent = ""; $("age").textContent = ""; drawChart(); FX.reading(null); return; }
+  const fresh = last.t !== lastSeenT;
+  if (fresh) { lastSeenT = last.t; pulse(); }
+  const c = colorFor(last.v);
+  document.documentElement.style.setProperty("--c", c);
+  $("bg").textContent = last.v >= 400 ? "HIGH" : last.v <= 39 ? "LOW" : fmt(last.v);
+  $("arrow").innerHTML = arrowSvg(last.trend);
+  const prev = data[data.length - 2];
+  if (prev && last.t - prev.t < 11 * 60000) {
+    const d = last.v - prev.v;
+    const ds = cfg.units === "mmol" ? (d / 18.0182).toFixed(1) : String(Math.round(d));
+    $("delta").textContent = (d > 0 ? "+" : d < 0 ? "" : "±") + ds;
+  } else $("delta").textContent = "";
+  const mins = Math.floor((Date.now() - last.t) / 60000);
+  $("age").textContent = mins < 1 ? "Just now" : mins === 1 ? "1 min ago" : mins < 60 ? `${mins} min ago` : `${Math.floor(mins/60)} h ${mins%60} min ago`;
+  app.classList.toggle("stale", mins >= 12);
+  showMsg("");
+  drawChart();
+  FX.reading({ v: last.v, low: cfg.low, stale: mins >= 12, fresh });
+}
+/* Every new reading: number grows, holds, settles. Never disabled. */
+let lastSeenT = 0;
+function pulse() { const b = $("bg"); b.classList.remove("pulse"); void b.offsetWidth; b.classList.add("pulse"); }
+$("bg").addEventListener("animationend", () => $("bg").classList.remove("pulse"));
+
+function drawChart() {
+  const cv = $("chart"), dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientHeight;
+  if (!w || !h) return;
+  cv.width = w * dpr; cv.height = h * dpr;
+  const g = cv.getContext("2d"); g.scale(dpr, dpr); g.clearRect(0, 0, w, h);
+  const now = Date.now(), span = cfg.hours * 3600000, t0 = now - span;
+  const pts = data.filter(p => p.t >= t0);
+  const fs = Math.max(11, Math.round(h * 0.075));
+  const padL = fs * 3.2, padR = fs * 0.6, padT = fs * 0.6, padB = fs * 1.8;
+  const maxV = Math.max(250, ...pts.map(p => p.v + 15)), minV = 40;
+  const X = t => padL + (t - t0) / span * (w - padL - padR);
+  const Y = v => padT + (1 - (Math.min(Math.max(v, minV), maxV) - minV) / (maxV - minV)) * (h - padT - padB);
+  // target range band
+  g.fillStyle = "rgba(61,220,132,0.07)";
+  g.fillRect(padL, Y(cfg.high), w - padL - padR, Y(cfg.low) - Y(cfg.high));
+  g.font = `${fs}px system-ui,sans-serif`; g.textBaseline = "middle"; g.textAlign = "right";
+  [[cfg.low, "#ff4d5e"], [cfg.high, "#ffc233"]].forEach(([v, col]) => {
+    g.strokeStyle = col; g.globalAlpha = .45; g.setLineDash([fs * .4, fs * .4]); g.lineWidth = 1.5;
+    g.beginPath(); g.moveTo(padL, Y(v)); g.lineTo(w - padR, Y(v)); g.stroke();
+    g.globalAlpha = .9; g.setLineDash([]); g.fillStyle = col; g.fillText(fmt(v), padL - fs * .5, Y(v));
+  });
+  g.globalAlpha = 1;
+  // hour grid
+  g.fillStyle = "#76838f"; g.textAlign = "center"; g.textBaseline = "top"; g.strokeStyle = "rgba(255,255,255,0.06)"; g.lineWidth = 1;
+  const step = cfg.hours <= 6 ? 3600000 : cfg.hours <= 12 ? 7200000 : 14400000;
+  const d0 = new Date(t0); d0.setMinutes(0, 0, 0);
+  for (let t = d0.getTime() + 3600000; t <= now; t += 3600000) {
+    if ((new Date(t).getHours() * 3600000) % step) continue;
+    const x = X(t);
+    g.beginPath(); g.moveTo(x, padT); g.lineTo(x, h - padB); g.stroke();
+    g.fillText(new Date(t).toLocaleTimeString([], { hour: "numeric" }).replace(/\s?([AP])M/i, (m, a) => a.toLowerCase()), x, h - padB + fs * .45);
+  }
+  if (!pts.length) return;
+  // connecting line
+  g.strokeStyle = "rgba(232,237,242,0.18)"; g.lineWidth = Math.max(1.5, fs * .12);
+  g.beginPath();
+  pts.forEach((p, i) => { const x = X(p.t), y = Y(p.v);
+    if (i && p.t - pts[i - 1].t > 15 * 60000) g.moveTo(x, y); else i ? g.lineTo(x, y) : g.moveTo(x, y); });
+  g.stroke();
+  // dots
+  const r = Math.max(2.5, Math.min(fs * .28, (w - padL) / (span / 300000) * .38));
+  pts.forEach(p => { g.fillStyle = hex[colorFor(p.v)]; g.beginPath(); g.arc(X(p.t), Y(p.v), r, 0, 7); g.fill(); });
+  const l = pts[pts.length - 1];
+  g.strokeStyle = hex[colorFor(l.v)]; g.lineWidth = 2; g.beginPath(); g.arc(X(l.t), Y(l.v), r * 2.1, 0, 7); g.stroke();
+}
+
+/* ---------- Clock, burn-in drift, wake lock ---------- */
+function tick() {
+  $("clock").textContent = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  render();
+}
+function drift() {
+  $("app").style.transform = cfg.shift === "1"
+    ? `translate(${(Math.random() * 2 - 1) * 1.2}vw, ${(Math.random() * 2 - 1) * 1.2}vh)` : "";
+}
+let wakeLock = null;
+async function keepAwake() {
+  try { if ("wakeLock" in navigator && document.visibilityState === "visible") wakeLock = await navigator.wakeLock.request("screen"); } catch {}
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { keepAwake(); poll(); } });
+
+/* ---------- UI ---------- */
+let uiTimer;
+document.addEventListener("pointerdown", e => {
+  if ($("settings").classList.contains("open")) return;
+  document.body.classList.add("showui"); clearTimeout(uiTimer);
+  uiTimer = setTimeout(() => document.body.classList.remove("showui"), 5000);
+});
+$("fsbtn").onclick = () => {
+  const d = document;
+  if (d.fullscreenElement || d.webkitFullscreenElement) (d.exitFullscreen || d.webkitExitFullscreen).call(d);
+  else { const el = d.documentElement; (el.requestFullscreen || el.webkitRequestFullscreen).call(el); }
+};
+$("setbtn").onclick = () => openSettings();
+$("cancel").onclick = () => $("settings").classList.remove("open");
+
+function openSettings(err) {
+  $("f_user").value = cfg.user; $("f_pass").value = cfg.pass; $("f_region").value = cfg.region;
+  $("f_units").value = cfg.units; $("f_low").value = cfg.low; $("f_high").value = cfg.high;
+  $("f_hours").value = String(cfg.hours); $("f_shift").value = cfg.shift;
+  $("f_simple").value = cfg.simple; $("f_theme").value = cfg.theme;
+  $("formerr").textContent = err || "";
+  document.body.classList.remove("showui");
+  $("settings").classList.add("open");
+}
+$("form").onsubmit = e => {
+  e.preventDefault();
+  const credsChanged = $("f_user").value.trim() !== cfg.user || $("f_pass").value !== cfg.pass || $("f_region").value !== cfg.region;
+  cfg = { user: $("f_user").value.trim(), pass: $("f_pass").value, region: $("f_region").value, units: $("f_units").value,
+    low: +$("f_low").value || 70, high: +$("f_high").value || 180, hours: +$("f_hours").value, shift: $("f_shift").value,
+    simple: $("f_simple").value, theme: $("f_theme").value };
+  localStorage.setItem("gd.cfg", JSON.stringify(cfg));
+  $("settings").classList.remove("open");
+  syncFx();
+  if (credsChanged) { sessionId = null; authBlocked = false; data = []; }
+  drift(); render(); poll();
+};
+
+/* ================= FX: Millie & Winston, scenes, seasonal themes =================
+   Purely decorative. Everything lives in #fx, a layer BEHIND #app, so nothing here can
+   cover or delay readings. Extend with FX.addTheme / FX.addScene / FX.PROPS / FX.ACC
+   (see CLAUDE.md). Test with ?demo&theme=christmas&scene=ride&fast, ?date=2026-07-04, ?night */
+const FX = (() => {
+  const Q = new URLSearchParams(location.search), FAST = Q.has("fast") ? .12 : 1, CANCEL = { cancel: 1 };
+  const R = (a, b) => a + Math.random() * (b - a), RI = (a, b) => Math.floor(R(a, b + 1)), one = a => a[Math.floor(Math.random() * a.length)], chance = p => Math.random() < p;
+  const U = () => Math.min(innerHeight / 100, innerWidth * .0068), vw = v => v * innerWidth / 100, vh = v => v * innerHeight / 100, portrait = () => innerHeight > innerWidth;
+  const soft = p => { p && p.catch && p.catch(() => {}); };
+  let gen = 0, on = false, theme = null, mode = null, busy = false, celebrate = false, state = "none", tickT = 0;
+  let fx, sky, amb, decor, stage, M, W;
+  const props = new Set();
+  const wait = ms => new Promise((res, rej) => { const g = gen; setTimeout(() => g === gen ? res() : rej(CANCEL), ms); });
+  const fin = (a, ms) => new Promise((res, rej) => { const g = gen; let d = 0; const end = () => { if (d++) return; g === gen ? res() : rej(CANCEL); }; a.onfinish = end; a.oncancel = end; setTimeout(end, ms + 300); });
+  const PINK = "#FF6B8A", GOLD = "#FFE27A", BLUE = "#9fc3ff", LEAFC = ["#E0662B", "#D9A12B", "#B8442A", "#8E5A2B"];
+  const HEART = "M50 90C10 60 2 38 14 22C26 8 44 14 50 28C56 14 74 8 86 22C98 38 90 60 50 90Z";
+  const STAR = "M50 2L61 38L98 38L68 60L79 96L50 74L21 96L32 60L2 38L39 38Z";
+
+  /* ---------- characters: cutouts of the real Millie & Winston (image data lives in sprites.js) ----------
+     w = width in stage units, ar = height/width, face = way the photo faces (1 right, -1 left, 0 camera),
+     hat / neck / mouth = [x, y, scale, rotation] in % of sprite width: where accessories and held items sit. */
+  const IMG = window.GD_SPRITES || {};
+  const SPRITES = {
+    m_stand: { w: 27, ar: 390 / 383, face: 1, hat: [57, 8, .6, 4] },
+    m_lie: { w: 22, ar: 260 / 290, face: -1, hat: [17, 7, .62, -8] },
+    m_toy: { w: 26, ar: 240 / 380, face: -1, hat: [19, 9, .5, -24] },
+    m_sleep: { w: 24, ar: 220 / 365, face: 1 },
+    w_sit: { w: 12.5, ar: 220 / 221, face: 0, hat: [47, 14, .8, 0], neck: [45, 62, .8, 0] },
+    w_side: { w: 14.5, ar: 160 / 249, face: -1, hat: [22, 22, .55, -22], mouth: [7, 50] },
+    w_up: { w: 10, ar: 260 / 184, face: -1, hat: [44, 7, .95, -14], neck: [52, 60, 1, 0] },
+    w_peek: { w: 10, ar: 1, face: 0, hat: [50, 24, .8, 0] }
+  };
+  const CAST = {
+    millie: { poses: { "": "m_stand", sit: "m_lie", lie: "m_lie", toy: "m_toy", sleep: "m_sleep", move: "m_stand" }, rest: "lie", home: 10.5, speed: 9, runx: 2.6, moveCls: "walk", runCls: "run" },
+    winston: { poses: { "": "w_sit", loaf: "w_side", up: "w_up", peek: "w_peek", sleep: "w_side", move: "w_side" }, rest: "", home: 90, speed: 10, runx: 2, moveCls: "hop", runCls: "hop fast" }
+  };
+
+  /* ---------- accessories (drawn around 0,0 = top of head / front of neck) ---------- */
+  const ACC = {
+    santa: '<path d="M-20 -2Q-12 -42 22 -32Q10 -24 20 -2Z" fill="#D8322F"/><rect x="-24" y="-8" width="48" height="11" rx="5.5" fill="#fff"/><circle cx="24" cy="-31" r="6.5" fill="#fff"/>',
+    antlers: '<g fill="none" stroke="#9A6B3A" stroke-width="4" stroke-linecap="round"><path d="M-9 0C-12 -12 -16 -18 -20 -28M-14 -14l-10 -2M-17 -21l-8 -8"/><path d="M9 0C12 -12 16 -18 20 -28M14 -14l10 -2M17 -21l8 -8"/></g>',
+    beanie: (a, b) => `<path d="M-22 0A22 25 0 0 1 22 0Z" fill="${a}"/><rect x="-24" y="-7" width="48" height="9" rx="4.5" fill="${b}"/><circle cx="0" cy="-26" r="6" fill="${b}"/>`,
+    party: (a, b) => `<path d="M-15 0L0 -40L15 0Z" fill="${a}"/><path d="M-10 -14H10L7 -22H-7Z" fill="${b}"/><circle cx="0" cy="-41" r="5" fill="${b}"/>`,
+    pilgrim: '<rect x="-27" y="-5" width="54" height="6" rx="3" fill="#1c1c1c"/><path d="M-15 -4L-12 -30H12L15 -4Z" fill="#2b2b2b"/><rect x="-14.500" y="-13" width="29" height="6" fill="#6B4A2A"/><rect x="-5" y="-15" width="10" height="10" fill="none" stroke="#E8C24A" stroke-width="2.5"/>',
+    sam: '<rect x="-27" y="-5" width="54" height="6" rx="3" fill="#fff"/><path d="M-14 -4L-16 -38H16L14 -4Z" fill="#fff"/><rect x="-11" y="-38" width="5" height="22" fill="#D8322F"/><rect x="-2.500" y="-38" width="5" height="22" fill="#D8322F"/><rect x="6" y="-38" width="5" height="22" fill="#D8322F"/><rect x="-15" y="-16" width="30" height="10" fill="#2D4FA3"/><circle cx="-8" cy="-11" r="1.6" fill="#fff"/><circle cx="0" cy="-11" r="1.6" fill="#fff"/><circle cx="8" cy="-11" r="1.6" fill="#fff"/>',
+    tophat: (a, b) => `<rect x="-25" y="-5" width="50" height="6" rx="3" fill="${a}"/><rect x="-15" y="-32" width="30" height="28" rx="2" fill="${a}"/><rect x="-15" y="-14" width="30" height="7" fill="${b}"/><rect x="-4" y="-15" width="8" height="9" fill="none" stroke="#E8C24A" stroke-width="2"/>`,
+    crown: '<path d="M-20 -1Q0 -9 20 -1" fill="none" stroke="#4E9F3D" stroke-width="3"/>' + [[-14, "#FF8FB1"], [0, "#FFE27A"], [14, "#B79CFF"]].map(([x, c]) => `<circle cx="${x}" cy="-7" r="6.5" fill="${c}"/><circle cx="${x}" cy="-7" r="2.4" fill="#fff"/>`).join(""),
+    bunny: '<path d="M-13 0C-22 -30 -15 -48 -9 -48C-3 -48 -3 -20 -4 0Z" fill="#fff"/><path d="M-10 -6C-15 -28 -12 -40 -9 -40C-6 -40 -7 -20 -7 -6Z" fill="#FFC1D9"/><path d="M13 0C22 -30 15 -48 9 -48C3 -48 3 -20 4 0Z" fill="#fff"/><path d="M10 -6C15 -28 12 -40 9 -40C6 -40 7 -20 7 -6Z" fill="#FFC1D9"/><path d="M-18 1Q0 -6 18 1" fill="none" stroke="#FFC1D9" stroke-width="4" stroke-linecap="round"/>',
+    sunhat: '<ellipse cx="0" cy="-2" rx="33" ry="7" fill="#E8CF8A"/><path d="M-16 -3A16 17 0 0 1 16 -3Z" fill="#F2DDA4"/><rect x="-16" y="-9" width="32" height="5" fill="#E0574F"/>',
+    hearts: `<path d="M-10 0V-16M10 0V-16" stroke="#ddd" stroke-width="1.6"/><g transform="translate(-19 -34) scale(.18)"><path d="${HEART}" fill="${PINK}"/></g><g transform="translate(1 -34) scale(.18)"><path d="${HEART}" fill="#FF3B6B"/></g>`,
+    pumpkin: '<path d="M-22 0A22 22 0 0 1 22 0Z" fill="#F08A24"/><path d="M-9 0A9 22 0 0 1 9 0Z" fill="#F7A440"/><path d="M-3 -21C-3 -29 2 -31 6 -32L7 -27C4 -27 3 -25 3 -21Z" fill="#4E7F3A"/>',
+    scarf: (a, b) => `<rect x="-17" y="-6" width="34" height="11" rx="5.5" fill="${a}"/><rect x="-2" y="2" width="9" height="22" rx="3" fill="${a}"/><rect x="-2" y="15" width="9" height="4" fill="${b}"/><rect x="-8" y="-6" width="5" height="11" fill="${b}"/>`,
+    bow: a => `<path d="M0 0L-13 -8V8ZM0 0L13 -8V8Z" fill="${a}"/><circle r="3.6" fill="#fff" opacity=".85"/>`,
+    bandana: a => `<path d="M-17 -5H17L0 17Z" fill="${a}"/><circle cx="-6" cy="0" r="1.6" fill="#fff"/><circle cx="6" cy="0" r="1.6" fill="#fff"/><circle cx="0" cy="8" r="1.6" fill="#fff"/>`
+  };
+
+  /* ---------- props: name -> [viewBox w, h, svg] ---------- */
+  const egg = (a, b) => [100, 100, `<path d="M50 4C24 4 10 44 10 64C10 86 28 98 50 98C72 98 90 86 90 64C90 44 76 4 50 4Z" fill="${a}"/><path d="M11 56L26 46L40 56L54 46L68 56L82 46L89 54V66L82 58L68 68L54 58L40 68L26 58L11 68Z" fill="${b}"/>`];
+  const balloon = c => [100, 150, `<ellipse cx="50" cy="40" rx="34" ry="40" fill="${c}"/><ellipse cx="38" cy="26" rx="8" ry="12" fill="#fff" opacity=".3"/><path d="M45 80H55L50 73Z" fill="${c}"/><path d="M50 80Q44 100 52 120Q58 136 50 150" stroke="#ccc" fill="none" stroke-width="2"/>`];
+  const flower = c => [60, 100, `<path d="M30 100V46" stroke="#4E9F3D" stroke-width="5"/><path d="M30 82Q14 76 12 62Q28 64 30 82Z" fill="#4E9F3D"/>${[0, 72, 144, 216, 288].map(a => `<circle cx="30" cy="15" r="11" fill="${c}" transform="rotate(${a} 30 30)"/>`).join("")}<circle cx="30" cy="30" r="9" fill="#FFE27A"/>`];
+  const PUMP = '<ellipse cx="50" cy="62" rx="46" ry="37" fill="#F08A24"/><ellipse cx="50" cy="62" rx="25" ry="37" fill="#F59B3A"/><ellipse cx="50" cy="62" rx="8" ry="37" fill="#F08A24"/><path d="M46 27C46 14 52 9 60 7L62 15C56 15 54 19 54 27Z" fill="#4E7F3A"/>';
+  const PROPS = {
+    ball: [100, 100, '<circle cx="50" cy="50" r="48" fill="#C9E24B"/><path d="M12 24Q50 50 12 78M88 22Q52 50 88 80" stroke="#fff" stroke-width="5" fill="none"/>'],
+    beachball: [100, 100, '<circle cx="50" cy="50" r="48" fill="#fff"/><path d="M50 2A48 48 0 0 1 98 50H50Z" fill="#FF5A5F"/><path d="M50 98A48 48 0 0 1 2 50H50Z" fill="#3FA7F5"/><path d="M2 50A48 48 0 0 1 50 2V50Z" fill="#FFD23F"/>'],
+    snowball: [100, 100, '<circle cx="50" cy="50" r="48" fill="#F2F7FC"/><circle cx="38" cy="38" r="14" fill="#fff"/>'],
+    carrot: [100, 50, '<path d="M98 25C72 4 42 2 24 14C19 24 23 36 31 40C52 46 78 40 98 25Z" fill="#F28C28"/><path d="M26 18C12 4 6 8 16 22C2 20 2 28 16 28C6 36 12 42 28 34Z" fill="#5BB450"/>'],
+    stick: [200, 40, '<path d="M4 24L196 18" stroke="#8B5E34" stroke-width="9" stroke-linecap="round"/><path d="M150 19l14-12" stroke="#8B5E34" stroke-width="6" stroke-linecap="round"/><ellipse cx="170" cy="6" rx="8" ry="4.500" fill="#5BB450"/>'],
+    candycane: [200, 60, '<path d="M8 44H160a17 17 0 0 0 0-34" fill="none" stroke="#fff" stroke-width="13" stroke-linecap="round"/><path d="M8 44H160a17 17 0 0 0 0-34" fill="none" stroke="#D8322F" stroke-width="13" stroke-dasharray="11 15"/>'],
+    flag: [100, 100, '<rect x="10" y="2" width="5" height="98" rx="2" fill="#C9CED6"/><rect x="15" y="6" width="76" height="46" fill="#fff"/><path d="M15 9.500H91M15 22.500H91M15 35.500H91M15 48.500H91" stroke="#D8322F" stroke-width="6.500"/><rect x="15" y="6" width="32" height="26" fill="#2D4FA3"/><g fill="#fff"><circle cx="23" cy="13" r="2"/><circle cx="31" cy="13" r="2"/><circle cx="39" cy="13" r="2"/><circle cx="27" cy="19" r="2"/><circle cx="35" cy="19" r="2"/><circle cx="23" cy="25" r="2"/><circle cx="31" cy="25" r="2"/><circle cx="39" cy="25" r="2"/></g>'],
+    heart: [100, 100, `<path d="${HEART}" fill="${PINK}"/>`],
+    star: [100, 100, `<path d="${STAR}" fill="${GOLD}"/>`],
+    present: [100, 100, '<rect x="10" y="40" width="80" height="60" rx="4" fill="#D8322F"/><rect x="6" y="30" width="88" height="18" rx="4" fill="#E8504C"/><rect x="43" y="30" width="14" height="70" fill="#FFD54A"/><path d="M50 30C34 6 14 16 30 30ZM50 30C66 6 86 16 70 30Z" fill="#FFD54A"/>'],
+    tree: [100, 140, `<rect x="43" y="118" width="14" height="22" fill="#6B4A2A"/><path d="M50 8L78 48H64L88 86H70L96 122H4L30 86H12L36 48H22Z" fill="#1F7A4A"/>${[[42, 44, "#FFD54A"], [58, 64, "#FF5A5F"], [36, 78, "#4AA3FF"], [62, 96, "#FFD54A"], [30, 108, "#FF5A5F"], [50, 104, "#fff"], [74, 110, "#4AA3FF"]].map(([x, y, c], i) => `<circle class="twk" style="animation-delay:${-i * .4}s" cx="${x}" cy="${y}" r="4.200" fill="${c}"/>`).join("")}<path transform="translate(39 -4) scale(.22)" d="${STAR}" fill="${GOLD}"/>`],
+    snowman: [100, 130, '<circle cx="50" cy="96" r="33" fill="#F2F7FC"/><circle cx="50" cy="56" r="24" fill="#F7FAFD"/><circle cx="50" cy="24" r="17" fill="#fff"/><circle cx="44" cy="20" r="2.200" fill="#222"/><circle cx="56" cy="20" r="2.200" fill="#222"/><path d="M50 25L66 29L50 31Z" fill="#F28C28"/><rect x="34" y="36" width="32" height="7" rx="3.500" fill="#D8322F"/><rect x="56" y="38" width="7" height="18" rx="3" fill="#D8322F"/><path d="M27 52L6 38M73 52L94 38" stroke="#8B5E34" stroke-width="3" stroke-linecap="round"/><circle cx="50" cy="58" r="2.200" fill="#222"/><circle cx="50" cy="70" r="2.200" fill="#222"/>'],
+    snowflake: [100, 100, '<path d="M50 6V94M12 28L88 72M12 72L88 28M50 22L40 12M50 22L60 12M50 78L40 88M50 78L60 88" stroke="#fff" stroke-width="7" stroke-linecap="round" fill="none"/>'],
+    pumpkin: [100, 100, PUMP],
+    jack: [100, 100, PUMP + '<g fill="#FFE27A" class="twk"><path d="M26 52L38 40L42 56ZM74 52L62 40L58 56ZM24 70Q50 92 76 70L66 72L60 80L52 74L44 80L36 72Z"/></g>'],
+    egg1: egg("#FFC1D9", "#fff"), egg2: egg("#BFE3FF", "#FFE27A"), egg3: egg("#C9F2C7", "#FF8FB1"),
+    basket: [100, 80, '<ellipse cx="34" cy="38" rx="11" ry="14" fill="#FFC1D9"/><ellipse cx="52" cy="34" rx="11" ry="14" fill="#BFE3FF"/><ellipse cx="68" cy="38" rx="11" ry="14" fill="#FFF3A6"/><path d="M12 40H88L79 78H21Z" fill="#B9854A"/><path d="M16 50H84M19 62H81" stroke="#8B5E34" stroke-width="2.500"/><path d="M17 40C21 0 79 0 83 40" fill="none" stroke="#B9854A" stroke-width="5"/>'],
+    pie: [100, 60, '<path d="M6 30H94L80 58H20Z" fill="#C9C9C9"/><ellipse cx="50" cy="30" rx="46" ry="14" fill="#E0A458"/><ellipse cx="50" cy="28" rx="36" ry="9" fill="#C7692B"/><path d="M40 12q-5-6 0-11M56 12q5-6 0-11" stroke="#fff" stroke-width="2" fill="none" opacity=".5"/>'],
+    turkey: [100, 100, [-64, -40, -16, 8, 32].map((a, i) => `<ellipse cx="40" cy="30" rx="9" ry="27" fill="${["#C7692B", "#E8A33D", "#8B4A2B"][i % 3]}" transform="rotate(${a} 42 64)"/>`).join("") + '<circle cx="50" cy="66" r="24" fill="#7A4A2A"/><path d="M62 60Q72 54 76 42" stroke="#7A4A2A" stroke-width="10" stroke-linecap="round" fill="none"/><circle cx="78" cy="38" r="9" fill="#7A4A2A"/><path d="M86 36L97 39L86 42Z" fill="#F2B632"/><path d="M84 43q4 9-1 13q-4-5 1-13Z" fill="#D8322F"/><circle cx="80" cy="35" r="1.800" fill="#fff"/><path d="M44 88V99M56 88V99M40 99H48M52 99H60" stroke="#F2B632" stroke-width="3" stroke-linecap="round"/>'],
+    bone: [100, 40, '<g fill="#F4EEDC"><rect x="18" y="13" width="64" height="14"/><circle cx="16" cy="11" r="10"/><circle cx="16" cy="29" r="10"/><circle cx="84" cy="11" r="10"/><circle cx="84" cy="29" r="10"/></g>'],
+    butterfly: [100, 100, '<g class="flap"><path d="M50 50C30 10 2 20 10 46C0 70 30 84 50 54Z" fill="#FF9F43"/><circle cx="24" cy="38" r="6" fill="#FFE27A"/></g><g class="flap r"><path d="M50 50C70 10 98 20 90 46C100 70 70 84 50 54Z" fill="#FF9F43"/><circle cx="76" cy="38" r="6" fill="#FFE27A"/></g><rect x="47" y="30" width="6" height="42" rx="3" fill="#333"/>'],
+    cardinal: [100, 70, '<ellipse cx="50" cy="42" rx="26" ry="16" fill="#D8322F"/><path d="M26 44L4 52L24 34Z" fill="#B3261F"/><circle cx="74" cy="32" r="12" fill="#D8322F"/><path d="M68 23L80 6L82 24Z" fill="#D8322F"/><path d="M84 30L98 34L84 38Z" fill="#F2A23A"/><circle cx="78" cy="30" r="2.200" fill="#111"/><path class="flapv" d="M36 40C44 12 62 12 60 40Z" fill="#B3261F"/>'],
+    bat: [100, 50, '<path d="M50 20C44 8 30 6 4 14C14 18 16 26 14 36C24 28 32 30 38 40C42 34 46 32 50 34C54 32 58 34 62 40C68 30 76 28 86 36C84 26 86 18 96 14C70 6 56 8 50 20Z" fill="#8A68BE"/><circle cx="46" cy="22" r="1.800" fill="#FFE27A"/><circle cx="54" cy="22" r="1.800" fill="#FFE27A"/>'],
+    balloonR: balloon("#FF5A5F"), balloonB: balloon("#4AA3FF"), balloonH: balloon(PINK),
+    hotair: [100, 130, '<path d="M50 2C20 2 6 24 6 44C6 66 30 84 40 96H60C70 84 94 66 94 44C94 24 80 2 50 2Z" fill="#FF7A59"/><path d="M50 2C38 2 30 24 30 44C30 66 42 84 45 96H55C58 84 70 66 70 44C70 24 62 2 50 2Z" fill="#FFD23F"/><path d="M42 96L44 110M58 96L56 110" stroke="#ccc" stroke-width="1.500"/><rect x="41" y="110" width="18" height="14" rx="3" fill="#8B5E34"/>'],
+    sleigh: [240, 90, '<path d="M92 50H156" stroke="#C9A24A" stroke-width="2"/><circle cx="36" cy="24" r="15" fill="#8B5E34"/><path d="M14 32H74C84 32 90 40 90 50V60H26C16 60 12 48 14 32Z" fill="#C0282A"/><path d="M10 70H86C96 70 100 62 98 56" fill="none" stroke="#E8C24A" stroke-width="4" stroke-linecap="round"/><path d="M30 60V70M72 60V70" stroke="#E8C24A" stroke-width="3"/><ellipse cx="178" cy="50" rx="24" ry="12" fill="#9A6B3A"/><path d="M160 58L154 78M170 60L168 80M188 60L192 80M198 56L206 76" stroke="#9A6B3A" stroke-width="5" stroke-linecap="round"/><path d="M196 44L210 28" stroke="#9A6B3A" stroke-width="9" stroke-linecap="round"/><ellipse cx="216" cy="24" rx="11" ry="7.500" fill="#9A6B3A"/><circle cx="227" cy="24" r="3.600" fill="#E8322F"/><path d="M210 18C208 8 204 6 200 2M209 12L216 4" fill="none" stroke="#6B4A2A" stroke-width="2.600" stroke-linecap="round"/><circle cx="217" cy="21" r="1.600" fill="#111"/>'],
+    geese: [200, 80, [[160, 40], [120, 24], [120, 56], [80, 9], [80, 71]].map(([x, y]) => `<path d="M${x - 14} ${y - 8}L${x} ${y}L${x - 14} ${y + 8}" fill="none" stroke="#cfd6dd" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`).join("")],
+    shootingstar: [200, 60, `<path d="M0 56L158 22L162 32Z" fill="${GOLD}" opacity=".4"/><path transform="translate(152 4) scale(.44)" d="${STAR}" fill="${GOLD}"/>`],
+    rocket: [160, 60, '<path d="M40 30L0 16L12 30L0 44Z" fill="#FFB02E"/><rect x="38" y="18" width="80" height="24" rx="6" fill="#fff"/><rect x="58" y="18" width="14" height="24" fill="#D8322F"/><rect x="86" y="18" width="14" height="24" fill="#2D4FA3"/><path d="M118 18Q152 30 118 42Z" fill="#D8322F"/>'],
+    kite: [100, 140, '<path d="M50 2L88 46L50 96L12 46Z" fill="#4AA3FF"/><path d="M50 2V96M12 46H88" stroke="#fff" stroke-width="2"/><path d="M50 96Q40 110 52 120Q62 130 50 140" fill="none" stroke="#FFD23F" stroke-width="2.500"/>'],
+    rainbow: [200, 100, ["#FF5A5F", "#FFB02E", "#FFE27A", "#3ddc84", "#4AA3FF"].map((c, i) => `<path d="M${6 + i * 12} 100A${94 - i * 12} ${94 - i * 12} 0 0 1 ${194 - i * 12} 100" fill="none" stroke="${c}" stroke-width="11"/>`).join("")],
+    shamrock: [100, 100, '<g fill="#2FA84F"><circle cx="50" cy="28" r="20"/><circle cx="28" cy="56" r="20"/><circle cx="72" cy="56" r="20"/><path d="M46 60Q50 84 40 98H50Q56 80 54 60Z"/></g>'],
+    leafpile: [140, 70, [[30, 54, 0], [58, 44, 1], [88, 50, 2], [112, 58, 3], [44, 30, 2], [76, 26, 0], [98, 36, 1], [62, 58, 3]].map(([x, y, c]) => `<ellipse cx="${x}" cy="${y}" rx="26" ry="15" fill="${LEAFC[c]}"/>`).join("")],
+    flowerP: flower("#FF8FB1"), flowerY: flower("#fff"), flowerB: flower("#B79CFF"),
+    cross: [100, 150, '<path d="M0 150Q50 92 100 150Z" fill="#2c2740"/><rect x="46" y="18" width="8" height="104" fill="#8B6B4A"/><rect x="28" y="42" width="44" height="8" fill="#8B6B4A"/>']
+  };
+
+  /* ---------- actors ---------- */
+  class Actor {
+    constructor(id, o) {
+      Object.assign(this, o); this.id = id; this.dir = 1; this.lift = 0; this.x = o.home; this.moving = false; this.key = null;
+      const el = this.el = document.createElement("div"); el.className = "ch"; el.id = id;
+      el.innerHTML = '<div class="ch-y"><div class="ch-f"><div class="spr-t"><div class="spr">' +
+        [...new Set(Object.values(o.poses))].map(k => `<img data-k="${k}" src="${IMG[k]}" alt="">`).join("") + '<svg class="acc"></svg></div></div></div></div>';
+      this.yEl = el.firstChild; this.fEl = this.yEl.firstChild; this.tEl = this.fEl.firstChild; this.acc = el.querySelector(".acc"); this.imgs = [...el.querySelectorAll("img")];
+      stage.appendChild(el); this.place(); this.render();
+    }
+    get p() { return this.el.dataset.pose || ""; }
+    get h() { return this.s.w * this.s.ar; }
+    render() { // pick the photo for the current state, flip it to face the right way, re-pin accessories
+      const P = this.poses, key = this.moving ? P.move : this.el.classList.contains("asleep") && P.sleep ? P.sleep : P[this.p] || P[""], s = this.s = SPRITES[key];
+      this.fEl.style.transform = this.dir * s.face < 0 ? "scaleX(-1)" : "";
+      if (key === this.key) return;
+      const first = !this.key; this.key = key;
+      this.fEl.style.width = `calc(var(--u)*${s.w})`; this.fEl.style.left = `calc(var(--u)*${-s.w / 2})`;
+      this.imgs.forEach(im => im.classList.toggle("on", im.dataset.k === key));
+      const pin = (a, svg) => a && svg ? `<g transform="translate(${a[0]} ${a[1]}) rotate(${a[3] || 0}) scale(${a[2] || 1})">${svg}</g>` : "";
+      const H = this.hats || {}, hp = this.held && PROPS[this.held];
+      this.acc.setAttribute("viewBox", `0 0 100 ${100 * s.ar}`);
+      this.acc.innerHTML = pin(s.neck, H.neck) + pin(s.hat, H.head) + (hp ? pin([s.mouth && s.mouth[0], s.mouth && s.mouth[1], 22 / hp[0]], s.mouth && `<g transform="translate(${-hp[0] / 2} ${-hp[1] / 2})">${hp[2]}</g>`) : "");
+      if (!first) { this.tEl.classList.remove("pop"); void this.tEl.offsetWidth; this.tEl.classList.add("pop"); }
+    }
+    place() { this.el.style.transform = `translateX(${vw(this.x)}px)`; this.yEl.style.transform = this.lift ? `translateY(${-this.lift * U()}px)` : ""; }
+    tp(x) { this.x = x; this.place(); return this; }
+    face(d) { this.dir = d; this.render(); return this; }
+    look(x) { return this.face(x >= this.x ? 1 : -1); }
+    pose(p) { this.el.dataset.pose = p || ""; this.render(); return this; }
+    on(...c) { this.el.classList.add(...c); this.render(); return this; }
+    off(...c) { this.el.classList.remove(...c); this.render(); return this; }
+    async flash(c, ms) { this.on(c); try { await wait(ms); } finally { this.off(c); } }
+    calm() { this.el.className = "ch"; this.el.dataset.pose = ""; this.moving = false; this.held = null; this.lift = 0; this.key = null; this.place(); this.render(); }
+    hold(p) { this.held = p || null; this.key = null; this.render(); }
+    dress(h) { this.hats = h; this.key = null; this.render(); }
+    async go(x, o = {}) {
+      if (Math.abs(x - this.x) < .4) return;
+      this.dir = x > this.x ? 1 : -1; this.moving = true; this.render();
+      const cls = (o.cls !== undefined ? o.cls : o.run ? this.runCls : this.moveCls).split(" ").filter(Boolean);
+      const ms = Math.abs(x - this.x) / (o.speed || this.speed * (o.run ? this.runx : 1)) * 1000;
+      this.on(...cls);
+      const a = this.el.animate([{ transform: `translateX(${vw(this.x)}px)` }, { transform: `translateX(${vw(x)}px)` }], { duration: ms, easing: "linear", fill: "forwards" });
+      try { await fin(a, ms); } finally { this.moving = false; this.off(...cls); this.x = x; this.place(); a.cancel(); }
+    }
+    jump(h = 5, ms = 420, twist = 0) {
+      const b = -this.lift * U(), t = b - h * U();
+      return fin(this.yEl.animate([{ transform: `translateY(${b}px) rotate(0deg)`, easing: "ease-out" }, { transform: `translateY(${t}px) rotate(${twist}deg)`, easing: "ease-in" }, { transform: `translateY(${b}px) rotate(0deg)` }], { duration: ms }), ms);
+    }
+    async liftTo(l, ms = 450) {
+      const b = -this.lift * U(), e = -l * U(), t = Math.min(b, e) - 4 * U();
+      const a = this.yEl.animate([{ transform: `translateY(${b}px)`, easing: "ease-out" }, { transform: `translateY(${t}px)`, easing: "ease-in" }, { transform: `translateY(${e}px)` }], { duration: ms, fill: "forwards" });
+      this.lift = l;
+      try { await fin(a, ms); } finally { this.place(); a.cancel(); }
+    }
+  }
+  function bubble(a, name, ms = 2800, size = 11) { // round portrait that pops up above a character
+    if (!IMG[name]) return;
+    const d = document.createElement("div"); d.className = "medal"; d.innerHTML = `<img src="${IMG[name]}" alt="">`;
+    d.style.cssText = `width:calc(var(--u)*${size});height:calc(var(--u)*${size});left:${vw(a.x)}px;bottom:calc(var(--floor) + ${(a.h + a.lift + 2) * U()}px)`;
+    stage.appendChild(d);
+    const an = d.animate([{ transform: "translate(-50%,30%) scale(.2)", opacity: 0 }, { transform: "translate(-50%,0) scale(1.1)", opacity: 1, offset: .1 }, { transform: "translate(-50%,0) scale(1)", opacity: 1, offset: .17 }, { transform: "translate(-50%,-5%) scale(1)", opacity: 1, offset: .86 }, { transform: "translate(-50%,-25%) scale(.6)", opacity: 0 }], { duration: ms, easing: "ease-out" });
+    an.onfinish = an.oncancel = () => d.remove();
+  }
+  function emote(a, txt, col = "#fff", ms = 1700) {
+    const d = document.createElement("div"); d.className = "emo"; d.textContent = txt; d.style.color = col;
+    d.style.left = vw(a.x) + a.dir * U() * a.h * .35 + "px";
+    d.style.bottom = `calc(var(--floor) + ${(a.h + a.lift) * U()}px)`;
+    stage.appendChild(d);
+    const an = d.animate([{ transform: "translate(-50%,0) scale(.4)", opacity: 0 }, { transform: "translate(-50%,-2vh) scale(1)", opacity: 1, offset: .25 }, { transform: "translate(-50%,-7vh) scale(1.1)", opacity: 0 }], { duration: ms, easing: "ease-out" });
+    an.onfinish = an.oncancel = () => d.remove();
+  }
+  function prop(name, x, y = 0, size = 6, cls = "") {
+    const [pw, ph, svg] = PROPS[name], d = document.createElement("div");
+    d.className = "prop " + cls; d.style.width = `calc(var(--u)*${size})`;
+    d.innerHTML = `<svg viewBox="0 0 ${pw} ${ph}">${svg}</svg>`;
+    const T = (x, y, e = "") => `translate(${vw(x) - size * U() / 2}px,${-vh(y)}px) ${e}`;
+    const set = (x, y, e) => { d.style.transform = T(x, y, e); d.px = x; d.py = y; };
+    set(x, y);
+    d.to = async (x, y, ms, ease = "ease-in-out", e = "") => {
+      const a = d.animate([{ transform: d.style.transform }, { transform: T(x, y, e) }], { duration: ms, easing: ease, fill: "forwards" });
+      try { await fin(a, ms); } finally { set(x, y, e); a.cancel(); }
+    };
+    d.arc = async (x, peak, y, ms) => {
+      const a = d.animate([{ transform: T(d.px, d.py), easing: "ease-out" }, { transform: T((d.px + x) / 2, peak, "rotate(180deg)"), easing: "ease-in" }, { transform: T(x, y, "rotate(360deg)") }], { duration: ms, fill: "forwards" });
+      try { await fin(a, ms); } finally { set(x, y); a.cancel(); }
+    };
+    d.fade = (ms = 600) => new Promise(r => { const a = d.animate([{ opacity: getComputedStyle(d).opacity }, { opacity: 0 }], { duration: ms, fill: "forwards" }); a.onfinish = a.oncancel = () => { d.remove(); props.delete(d); r(); }; });
+    stage.appendChild(d); props.add(d); return d;
+  }
+  const keep = (p, ms) => { props.delete(p); setTimeout(() => p.isConnected && p.fade(1500), ms); };
+  function burst(x, y, colors, n = 14, r = 9, ms = 1100) {
+    for (let i = 0; i < n; i++) {
+      const d = document.createElement("i"); d.className = "spark"; d.style.background = one(colors);
+      d.style.left = vw(x) + "px"; d.style.bottom = `calc(var(--floor) + ${vh(y)}px)`; stage.appendChild(d);
+      const an = R(0, 6.283), rr = R(.45, 1) * r * U();
+      const a = d.animate([{ transform: "translate(0,0) scale(1)", opacity: 1 }, { transform: `translate(${Math.cos(an) * rr}px,${Math.sin(an) * rr + r * U() * .3}px) scale(.3)`, opacity: 0 }], { duration: ms * R(.7, 1.1), easing: "cubic-bezier(.1,.7,.3,1)" });
+      a.onfinish = a.oncancel = () => d.remove();
+    }
+  }
+  const FWC = ["#FF5A5F", "#4AA3FF", "#FFE27A", "#3ddc84", "#FF8FB1", "#B79CFF"];
+  const firework = () => burst(R(12, 88), R(30, 56), [one(FWC), "#fff"], 22, 15, 1500);
+
+  /* ---------- ambient particles ---------- */
+  const PT = {
+    snow: { m: "fall", s: [.5, 1.4], d: [10, 22] },
+    leaf: { m: "fall", s: [1.5, 2.5], d: [9, 16], c: LEAFC },
+    petal: { m: "fall", s: [1, 1.7], d: [10, 18], c: ["#FFC1D9", "#FFD9E8", "#fff"] },
+    confetti: { m: "fall", s: [.8, 1.4], d: [7, 13], c: FWC },
+    heart: { m: "rise", s: [1.5, 2.8], d: [12, 22], c: [PINK, "#FF8FA8", "#FFC1D0"], h: `<svg viewBox="0 0 100 100"><path d="${HEART}" fill="currentColor"/></svg>` },
+    shamrock: { m: "fall", s: [1.6, 2.6], d: [11, 18], h: `<svg viewBox="0 0 100 100">${PROPS.shamrock[2]}</svg>` },
+    star: { m: "twk", s: [.35, .8], d: [1.5, 4], y: [2, 58] },
+    sparkle: { m: "twk", s: [.5, 1], d: [1.2, 3], y: [2, 62], c: ["#FFC1D9", "#BFE3FF", "#FFF3A6", "#C9F2C7"] },
+    firefly: { m: "drift", s: [.5, .8], d: [6, 13], y: [22, 62] }
+  };
+  function mkPt(kind, free) {
+    const k = PT[kind], d = document.createElement("span"), s = R(k.s[0], k.s[1]);
+    d.className = "pt " + (free ? "free" : k.m);
+    d.innerHTML = `<i class="p-${kind}" style="width:${s}vh;height:${s}vh;${k.c ? `color:${one(k.c)};` : ""}animation-duration:${R(2, 5).toFixed(1)}s">${k.h || ""}</i>`;
+    if (!free) {
+      d.style.left = R(0, 100) + "vw"; const dur = R(k.d[0], k.d[1]);
+      d.style.animationDuration = dur + "s"; d.style.animationDelay = -R(0, dur) + "s";
+      if (k.y) d.style.top = R(k.y[0], k.y[1]) + "vh";
+    }
+    return d;
+  }
+  function setAmb(kind, n) { amb.innerHTML = ""; if (kind) for (let i = 0; i < n; i++) amb.appendChild(mkPt(kind)); }
+  function gust() { // a wave of the theme's particles blown across the whole screen
+    const kind = theme.amb ? theme.amb[0] : "snow";
+    for (let i = 0; i < 36; i++) {
+      const d = mkPt(kind, true), y = R(0, 92); amb.appendChild(d);
+      const a = d.animate([{ transform: `translate(-6vw,${y}vh) rotate(0deg)` }, { transform: `translate(112vw,${y + R(-12, 16)}vh) rotate(${R(200, 700)}deg)` }], { duration: R(2400, 4000), delay: i * 55, easing: "ease-in", fill: "both" });
+      a.onfinish = a.oncancel = () => d.remove();
+    }
+  }
+
+  /* ---------- decor helpers ---------- */
+  const D = (p, x, size, y = 0, cls = "") => { const [w, h, s] = PROPS[p]; return `<div class="dec ${cls}" style="width:calc(var(--u)*${size});left:calc(${x}vw - var(--u)*${size / 2});bottom:calc(var(--floor) + ${y}vh)"><svg viewBox="0 0 ${w} ${h}">${s}</svg></div>`; };
+  const mounds = (c, o = .45) => `<svg class="mounds" viewBox="0 0 1000 40" preserveAspectRatio="none"><path d="M0 40V26Q60 8 130 24T300 22T480 26T640 20T820 26T1000 18V40Z" fill="${c}" opacity="${o}"/></svg>`;
+  const lights = cs => { const n = portrait() ? 14 : 24; let h = '<div class="lights">'; for (let i = 0; i < n; i++) { const c = cs[i % cs.length]; h += `<i style="left:${((i + .5) / n * 100).toFixed(2)}%;top:${(.4 + Math.sin(i / (n - 1) * Math.PI * 5) ** 2 * 1.1).toFixed(2)}vh;background:${c};box-shadow:0 0 1.2vh ${c};animation-delay:${-(i % 5) * .55}s"></i>`; } return h + "</div>"; };
+  const sky2 = (a, b) => `radial-gradient(110% 55% at 50% 0,${a},transparent 72%),radial-gradient(90% 45% at 50% 100%,${b},transparent 75%)`;
+
+  /* ---------- themes: first match wins, so holidays sit above seasons ---------- */
+  function easter(y) { const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451); return new Date(y, Math.floor((h + l - 7 * m + 114) / 31) - 1, (h + l - 7 * m + 114) % 31 + 1); }
+  const nthDay = (y, m, wd, n) => 1 + (wd - new Date(y, m, 1).getDay() + 7) % 7 + (n - 1) * 7;
+  const lastDay = (y, m, wd) => { const d = new Date(y, m + 1, 0); return d.getDate() - (d.getDay() - wd + 7) % 7; };
+  const fromEaster = d => Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - easter(d.getFullYear())) / 864e5);
+  const RWB = ["#FF5A5F", "#fff", "#4AA3FF"];
+  const THEMES = [
+    { id: "newyear", name: "New Year", when: (d, md) => md >= 1231 || md <= 101, // Dec 31 – Jan 1
+      sky: sky2("rgba(70,80,190,.30)", "rgba(190,150,40,.10)"), glow: "#8fa8ff", amb: ["confetti", 22], tags: ["fireworks"],
+      hats: { m: { head: ACC.party("#4AA3FF", GOLD) }, w: { head: ACC.party("#FF6FA5", "#fff") } },
+      decor: () => lights([GOLD, "#fff", "#8fa8ff"]) + D("balloonR", 3, 5, 6) + D("balloonB", 97, 5, 9), tick: () => chance(.7) && firework(), flyer: "shootingstar" },
+    { id: "valentine", name: "Valentine's Day", when: (d, md) => md >= 207 && md <= 214, // Feb 7 – 14
+      sky: sky2("rgba(200,50,100,.26)", "rgba(200,50,100,.10)"), glow: PINK, amb: ["heart", 14], tags: ["love"],
+      hats: { m: { head: ACC.hearts, neck: ACC.bow(PINK) }, w: { neck: ACC.bow("#FF3B6B") } },
+      decor: () => D("heart", 3, 3.5, 1, "twk") + D("heart", 97, 3, 1.5, "twk") + D("balloonH", 96, 5, 10), flyer: "balloonH", toy: "heart" },
+    { id: "goodfriday", name: "Good Friday", calm: true, when: d => { const k = fromEaster(d); return k === -2 || k === -1; }, // Good Friday & Holy Saturday: quiet
+      sky: sky2("rgba(90,60,150,.30)", "rgba(60,40,100,.12)"), glow: "#8f7ad0", amb: ["star", 14], decor: () => D("cross", 93, 13) },
+    { id: "easter", name: "Easter", when: d => { const k = fromEaster(d); return k >= -7 && k <= 1; }, // Palm Sunday – Easter Monday
+      sky: sky2("rgba(150,120,220,.24)", "rgba(120,200,140,.12)"), glow: "#FFC1D9", amb: ["petal", 18], tags: ["easter", "spring"],
+      hats: { m: { head: ACC.bunny, neck: ACC.bow("#B79CFF") }, w: { neck: ACC.bow("#FFC1D9") } },
+      decor: () => mounds("#4E9F3D", .4) + D("basket", 96.500, 7) + D("egg1", 3, 2.600) + D("egg2", 5.500, 2.200) + D("egg3", 89, 2.400) + D("flowerP", 1.500, 3), flyer: "hotair", carry: "basket" },
+    { id: "stpatrick", name: "St. Patrick's Day", when: (d, md) => md >= 315 && md <= 317,
+      sky: sky2("rgba(40,160,80,.26)", "rgba(40,160,80,.10)"), glow: "#3ddc84", amb: ["shamrock", 14], tags: ["stpat"],
+      hats: { m: { head: ACC.tophat("#2FA84F", "#1c1c1c") }, w: { neck: ACC.bow("#2FA84F") } },
+      decor: () => mounds("#2FA84F", .35) + D("shamrock", 3, 3.500) + D("shamrock", 96, 4) },
+    { id: "memorial", name: "Memorial Day", when: (d, md, y) => { const l = lastDay(y, 4, 1); return d.getMonth() === 4 && d.getDate() >= l - 2 && d.getDate() <= l; },
+      sky: sky2("rgba(50,80,170,.28)", "rgba(170,40,50,.10)"), glow: "#8fa8ff", amb: ["star", 20], tags: ["patriotic", "summer"],
+      hats: { m: { neck: ACC.bandana("#2D4FA3") }, w: { neck: ACC.bow("#D8322F") } },
+      decor: () => D("flag", 2.500, 9) + D("flag", 97, 9), carry: "flag" },
+    { id: "july4", name: "Independence Day", when: (d, md) => md >= 701 && md <= 704, // Jul 1 – 4
+      sky: sky2("rgba(50,80,190,.30)", "rgba(190,40,50,.12)"), glow: "#FF5A5F", amb: ["star", 22], tags: ["patriotic", "fireworks", "summer"],
+      hats: { m: { head: ACC.sam, neck: ACC.bandana("#D8322F") }, w: { neck: ACC.bandana("#2D4FA3") } },
+      decor: () => lights(RWB) + D("flag", 2.500, 9) + D("flag", 97, 9), tick: () => chance(.75) && firework(), carry: "flag", flyer: "rocket", toy: "beachball" },
+    { id: "halloween", name: "Halloween", when: (d, md) => md >= 1025 && md <= 1031, // Oct 25 – 31
+      sky: sky2("rgba(110,60,170,.28)", "rgba(220,110,20,.12)"), glow: "#F08A24", amb: ["leaf", 14], tags: ["pumpkin", "fall"],
+      hats: { m: { head: ACC.pumpkin }, w: { head: ACC.party("#F08A24", "#2b2b2b") } },
+      decor: () => lights(["#F08A24", "#8A68BE"]) + D("jack", 3, 6) + D("jack", 96.500, 7.500) + D("pumpkin", 90.500, 4), flutter: "bat", flyer: "bat" },
+    { id: "thanksgiving", name: "Thanksgiving", when: (d, md, y) => d.getMonth() === 10 && d.getDate() === nthDay(y, 10, 4, 4), // the day itself (Christmas season surrounds it)
+      sky: sky2("rgba(200,110,30,.26)", "rgba(140,70,30,.12)"), glow: "#E8A33D", amb: ["leaf", 16], tags: ["thanks", "pumpkin", "fall"],
+      hats: { m: { head: ACC.pilgrim }, w: { neck: ACC.scarf("#C7692B", GOLD) } },
+      decor: () => D("pumpkin", 3, 6) + D("pumpkin", 96.500, 7.500) + D("pie", 90, 5) + D("leafpile", 6.500, 6) },
+    { id: "christmas", name: "Christmas", when: (d, md) => md >= 1101 && md <= 1230, // Nov 1 – Dec 30
+      sky: sky2("rgba(30,120,75,.30)", "rgba(160,30,35,.14)"), glow: "#ff6b6b", amb: ["snow", 30], tags: ["xmas", "snow"],
+      hats: { m: { head: ACC.santa, neck: ACC.scarf("#1F7A4A", "#fff") }, w: { head: ACC.antlers, neck: ACC.scarf("#D8322F", "#fff") } },
+      decor: () => lights(["#FF5A5F", "#FFD23F", "#3ddc84", "#4AA3FF"]) + mounds("#eef4fa") + D("tree", 96.500, 12) + D("present", 1.800, 3.600) + D("star", 5, 3.200, 50, "twk"),
+      carry: "candycane", flyer: "sleigh", flutter: "cardinal" },
+    { id: "winter", name: "Winter", when: d => [11, 0, 1].includes(d.getMonth()),
+      sky: sky2("rgba(60,110,190,.26)", "rgba(120,160,220,.10)"), glow: "#9fc3ff", amb: ["snow", 24], tags: ["snow"],
+      hats: { m: { head: ACC.beanie("#3F7FD9", "#fff"), neck: ACC.scarf("#3F7FD9", "#fff") }, w: { neck: ACC.scarf("#E0574F", "#fff") } },
+      decor: () => mounds("#eef4fa") + D("snowman", 96.500, 8.500), flyer: "shootingstar", flutter: "cardinal" },
+    { id: "spring", name: "Spring", when: d => d.getMonth() >= 2 && d.getMonth() <= 4,
+      sky: sky2("rgba(90,170,120,.22)", "rgba(230,120,170,.10)"), glow: "#FF8FB1", amb: ["petal", 14], tags: ["spring"],
+      hats: { m: { head: ACC.crown }, w: { neck: ACC.bow("#FF8FB1") } },
+      decor: () => mounds("#4E9F3D", .4) + D("flowerP", 2, 3.400) + D("flowerY", 4.500, 2.800) + D("flowerB", 96, 3.400) + D("flowerP", 98.500, 2.600), flyer: "kite" },
+    { id: "summer", name: "Summer", when: d => d.getMonth() >= 5 && d.getMonth() <= 7,
+      sky: sky2("rgba(40,130,190,.24)", "rgba(230,180,60,.10)"), glow: GOLD, amb: ["firefly", 14], tags: ["summer"],
+      hats: { m: { head: ACC.sunhat }, w: { neck: ACC.bandana("#3FA7F5") } },
+      decor: () => mounds("#4E9F3D", .4) + D("flowerY", 2.500, 3) + D("flowerB", 97.500, 3), flyer: "hotair", toy: "beachball" },
+    { id: "fall", name: "Fall", when: () => true, // Sep – Oct (and the fallback)
+      sky: sky2("rgba(200,110,30,.24)", "rgba(140,60,30,.10)"), glow: "#E0662B", amb: ["leaf", 16], tags: ["fall", "pumpkin"],
+      hats: { m: { neck: ACC.scarf("#C7692B", GOLD) }, w: { neck: ACC.scarf("#8E5A2B", GOLD) } },
+      decor: () => D("pumpkin", 96.500, 6.500) + D("pumpkin", 91, 4) + D("leafpile", 4, 7), flyer: "geese" }
+  ];
+  function today() { const o = Q.get("date"), n = new Date(); if (!o) return n; const [y, m, d] = o.split("-").map(Number); return new Date(y, m - 1, d, n.getHours(), n.getMinutes()); }
+  function resolveTheme() {
+    const forced = Q.get("theme") || (cfg.theme !== "auto" && cfg.theme);
+    const d = today(), md = (d.getMonth() + 1) * 100 + d.getDate();
+    return THEMES.find(t => t.id === forced) || THEMES.find(t => t.when(d, md, d.getFullYear()));
+  }
+  const isNight = () => { if (Q.has("night")) return true; const d = new Date(), m = d.getHours() * 60 + d.getMinutes(); return m >= 21 * 60 || m < 6 * 60 + 30; };
+
+  /* ---------- scenes ---------- */
+  const SC = [], scene = (name, run, o = {}) => SC.push(Object.assign({ name, run, w: 1 }, o));
+  const both = (...p) => Promise.all(p);
+  const RIDE = 16.5, RIDEX = 7; // where Winston sits on standing Millie: lift (u) and offset toward her tail (vw)
+  const centerOf = id => { const r = $(id).getBoundingClientRect(); return (r.left + r.width / 2) / innerWidth * 100; };
+
+  scene("chase", async () => {
+    W.face(-1); emote(W, "!"); await W.jump(5, 380);
+    const run = W.go(-12, { run: 1 }); M.face(1).on("wag"); await wait(3900); emote(M, "!");
+    await both(run, M.go(-16, { run: 1 }));
+    W.tp(113); M.tp(121); await both(W.go(W.home), M.go(M.home, { run: 1 }));
+    M.pose("lie").on("pant"); await wait(3000);
+  });
+  scene("fetch", async () => {
+    const toy = theme.toy || "ball", b = prop(toy, 112, 14, 4.5);
+    M.face(1).on("wag"); emote(M, "!");
+    const fly = (async () => { await b.arc(62, 30, 0, 1000); await b.arc(44, 12, 0, 600); await b.arc(36, 5, 0, 400); })();
+    await wait(500); await both(fly, M.go(30, { run: 1 }));
+    M.on("sniff"); await wait(350); b.remove(); M.off("sniff");
+    await M.go(W.home - 12);
+    const b2 = prop(toy, W.home - 6, 0, 4.5); W.face(-1); emote(W, "?"); await wait(700); await W.jump(4, 350);
+    await both(b2.to(-8, 0, 3000, "ease-out", "rotate(-720deg)"), (async () => { await wait(500); await M.go(-16, { run: 1 }); })());
+    await M.go(M.home); M.face(1).pose("toy"); await wait(2500);
+  });
+  scene("boop", async () => {
+    await M.go(W.home - 12); W.face(-1); M.on("sniff"); await wait(600); await W.jump(2, 300);
+    emote(W, "♥︎", PINK); M.off("sniff").on("wag"); emote(M, "♥︎", PINK); await wait(1800);
+    W.pose("loaf"); M.pose("lie"); await wait(R(5, 10) * 1e3);
+  });
+  scene("ride", async () => {
+    await M.go(W.home - 12); M.face(-1).pose("lie"); await wait(700); W.face(-1);
+    await both(W.go(M.x + 2.5, { cls: "", speed: 13 }), W.liftTo(11, 700));
+    emote(W, "♪", GOLD); M.pose(""); await W.liftTo(RIDE, 450); M.on("wag");
+    await both(M.go(M.home + 2), W.go(M.home + 2 + RIDEX, { cls: "", speed: M.speed }));
+    await wait(600); M.pose("lie"); await W.liftTo(11, 450); await wait(500);
+    await both(W.go(M.x + 13, { cls: "", speed: 16 }), W.liftTo(0, 700));
+    await W.jump(6, 450, -20); emote(W, "♥︎", PINK); bubble(M, "b_mtongue"); await wait(1500);
+  });
+  scene("leapfrog", async () => {
+    await M.go(24); M.face(1).pose("lie").on("asleep"); await W.go(M.x + 13); emote(M, "z", BLUE, 2000);
+    for (const tx of [M.x - 13, M.x + 13]) { await wait(600); await both(W.go(tx, { cls: "", speed: 30 }), W.jump(20, 870)); }
+    M.off("asleep"); emote(M, "!"); await W.jump(7, 460, -24); M.on("wag"); await wait(1500);
+  });
+  scene("nap", async () => {
+    await W.go(M.x + 10); W.face(-1); M.face(1).pose("lie"); await wait(700); W.pose("loaf"); await wait(900);
+    M.on("asleep"); W.on("asleep");
+    for (let i = 0, n = RI(4, 8); i < n; i++) { emote(i % 2 ? W : M, "z", BLUE, 2400); await wait(2600); }
+    M.off("asleep"); W.off("asleep"); await wait(700); W.pose(""); await W.jump(5, 400);
+  });
+  scene("flutter", async () => {
+    const f = prop(theme.flutter || "butterfly", -6, 32, 4.5, "flit"); M.on("lookup"); W.pose("up");
+    for (const [x, y] of [[14, 26], [24, 36], [36, 24], [50, 40], [64, 28], [78, 36], [90, 22], [108, 40]]) {
+      M.look(x); W.look(x); if (x === 24) soft(M.jump(5, 450)); if (x === 90) { W.pose(""); soft(W.jump(7, 450, -20)); }
+      await f.to(x, y + R(-4, 4), R(1300, 2000));
+    }
+  });
+  scene("zoomies", async () => {
+    emote(M, "!"); M.on("wag"); await M.flash("shake", 900); W.pose("up");
+    await M.go(114, { run: 1 }); emote(W, "?"); M.tp(-14); await M.go(114, { run: 1, speed: 60 });
+    await M.go(-14, { run: 1, speed: 60 }); W.pose(""); emote(W, "!"); soft(W.jump(6, 400));
+    await M.go(M.home, { run: 1 }); M.face(1).pose("lie").on("pant"); await wait(4000);
+  });
+  scene("carrot", async () => {
+    const c = prop("carrot", W.home - 7, 60, 5); await c.to(W.home - 7, 0, 650, "ease-in");
+    emote(W, "!"); await W.jump(5, 380); await W.go(W.home - 3.5); W.face(-1).on("chew");
+    const mg = (async () => { await M.go(W.home - 19, { run: 1 }); M.pose("sit").on("tilt"); })();
+    await wait(5200); await mg; await c.fade(600); W.off("chew"); emote(W, "♥︎", PINK); await wait(700); emote(M, "?"); await wait(1500);
+  });
+  scene("parade", async () => {
+    await M.go(-16, { run: 1 }); M.on("wag");
+    await M.go(72); bubble(M, "b_mstick"); emote(W, "!"); await W.jump(5, 380);
+    await both(M.go(M.home + 4), (async () => { await wait(1300); await W.go(M.home + 23); })());
+    M.face(1).pose("lie"); await wait(600); W.face(-1).pose("up"); await wait(2800); W.pose(""); await wait(400);
+  });
+  scene("dance", async () => {
+    await W.go(M.home + 16); W.face(-1); M.face(1).on("wag");
+    for (let i = 0; i < 6; i++) { emote(i % 2 ? M : W, "♪", one([GOLD, BLUE, "#FF8FB1"]), 1300); await both(M.jump(i % 2 ? 4 : 2, 400), W.jump(i % 2 ? 3 : 6, 400, i % 2 ? 0 : -18)); await wait(120); }
+    emote(M, "♥︎", PINK); await wait(900);
+  });
+  scene("hide", async () => {
+    await W.go(113, { run: 1 }); M.face(1); emote(M, "?"); await M.go(26); M.on("lookup"); await wait(900); M.off("lookup");
+    W.tp(-10); await W.go(13); await W.jump(5, 380); emote(W, "!"); M.face(-1); emote(M, "!"); M.on("wag"); await M.jump(4, 380); await wait(900);
+    await both(W.go(W.home, { run: 1 }), (async () => { await wait(600); await M.go(M.home); })());
+  });
+  scene("swap", async () => {
+    const a = M.home, b = W.home; await both(M.go(b - 3), W.go(a + 3)); M.face(-1).pose("sit"); W.face(1).pose("loaf");
+    await wait(R(15, 30) * 1e3 * FAST); M.pose(""); W.pose(""); await wait(450);
+  });
+  scene("peek", async () => { // Winston peeks out from behind the big number
+    await W.go(centerOf("bg") + R(-6, 6)); W.pose("peek"); await wait(1500);
+    await W.flash("twitch", 1200); W.face(-1).pose("up"); await wait(1800); W.pose(""); await wait(450); await W.jump(6, 450, -20);
+  });
+  scene("arrow", async () => { // Millie studies the trend arrow
+    await M.go(Math.max(12, centerOf("arrow") - 9)); M.face(1).on("lookup"); await wait(1200);
+    M.off("lookup").on("tilt"); emote(M, "?"); await wait(1500); M.off("tilt"); soft(M.jump(2, 260)); emote(M, "!"); M.on("wag"); await wait(1500);
+  });
+  scene("inspect", async () => { // Winston sniffs along the top of the graph
+    for (const x of [70, 48, 26]) { await W.go(x + R(-5, 5)); await W.flash("chew", 1300); if (chance(.5)) { W.pose("up"); await wait(900); W.pose(""); await wait(450); } }
+    M.look(W.x).on("tilt"); await wait(1000);
+  });
+  scene("tailchase", async () => {
+    M.on("wag"); for (let i = 0; i < 9; i++) { M.face(-M.dir); soft(M.jump(1.2, 170)); await wait(190); }
+    M.face(1).off("wag"); emote(M, "✦", GOLD); await M.flash("shake", 900); W.pose("up"); emote(W, "?"); await wait(1500);
+  });
+  scene("binkies", async () => {
+    M.look(W.x).on("wag");
+    for (const x of [W.home - 9, W.home - 18, W.home - 9, W.home]) { await both(W.go(x, { cls: "", speed: 20 }), W.jump(9, 460, x < W.x ? -24 : 24)); await wait(250); }
+    emote(W, "♪", GOLD); await wait(900);
+  });
+  scene("bone", async () => {
+    const b = prop("bone", M.home + 9, 60, 5.5); await b.to(M.home + 9, 0, 650, "ease-in");
+    M.face(1).on("wag"); emote(M, "!"); await wait(600); b.remove(); M.pose("toy").on("chew");
+    const wg = (async () => { await W.go(M.x + 17); W.pose("up"); await wait(2500); W.pose("loaf"); })();
+    await wait(9000); await wg; M.off("chew"); bubble(M, "b_mtongue"); await wait(800); W.pose(""); await wait(450);
+  });
+  /* seasonal */
+  scene("present", async () => {
+    const x = 26, p = prop("present", x, 70, 7); await p.to(x, 0, 800, "ease-in"); burst(x, 2, ["#fff", GOLD], 8, 5);
+    await both(M.go(x - 10, { run: 1 }), W.go(x + 9, { run: 1 })); W.face(-1); M.on("sniff", "wag"); await wait(900); M.off("sniff"); await W.jump(5, 380);
+    burst(x, 6, [GOLD, "#D8322F", "#3ddc84", "#fff"], 20, 11); p.remove();
+    const g = prop(one(["ball", "carrot", "bone", "star"]), x, 0, 5); await g.arc(x, 16, 0, 700);
+    emote(M, "♥︎", PINK); emote(W, "♥︎", PINK); await both(M.jump(4, 400), W.jump(7, 450, -20)); await wait(1500); await g.fade();
+  }, { tags: ["xmas"], w: 2.5 });
+  scene("treestar", async () => {
+    await W.go(88); W.face(1).pose("up"); await wait(900);
+    for (let i = 0; i < 3; i++) { burst(96.5, R(6, 14), [GOLD, "#fff", "#D8322F", "#3ddc84"], 10, 6); await wait(600); }
+    emote(W, "✦", GOLD); M.face(1).on("wag", "lookup"); await wait(2000); W.pose(""); await wait(450);
+  }, { tags: ["xmas"], w: 1.5 });
+  scene("snowcatch", async () => {
+    M.on("lookup", "pant");
+    for (let i = 0; i < 4; i++) { const f = prop("snowflake", M.x + M.dir * 6, 40, 2.5); soft(f.to(f.px, 13, 900, "ease-in").then(() => f.remove())); await wait(600); await M.jump(5, 460); if (i === 1) soft(W.jump(7, 450, -20)); await wait(300); }
+    M.off("lookup", "pant"); await M.flash("shake", 900);
+  }, { tags: ["snow"], w: 2 });
+  scene("snowman", async () => {
+    const x = 27, b = prop("snowball", M.home + 9, 0, 4.5); M.face(1); await wait(300); M.on("sniff");
+    await both(b.to(x - 2, 0, (x - 11 - M.x) / M.speed * 1000, "linear", "rotate(540deg)"), M.go(x - 11)); M.off("sniff");
+    b.remove(); const s = prop("snowman", x, 0, 9); burst(x, 8, ["#fff"], 10, 7); emote(M, "!"); M.on("wag");
+    await W.go(x + 10); W.face(-1).pose("up"); await wait(1500); emote(W, "♥︎", PINK); W.pose(""); await wait(600);
+    keep(s, R(40, 80) * 1e3);
+  }, { tags: ["snow"], w: 1.5 });
+  scene("egghunt", async () => {
+    const xs = [72, 56, 40, 24].map(x => x + R(-4, 4)), eggs = xs.map((x, i) => { burst(x, 3, ["#fff", GOLD], 6, 4); return prop("egg" + (i % 3 + 1), x, 0, 3.2); });
+    emote(W, "!"); await W.jump(5, 380);
+    const mg = (async () => { await wait(1500); await M.go(34); M.pose("sit").on("wag"); })();
+    for (let i = 0; i < 4; i++) { await W.go(xs[i] + 4); await W.flash("chew", 700); burst(xs[i], 3, ["#FFC1D9", "#BFE3FF", "#FFF3A6"], 10, 6); eggs[i].remove(); await W.jump(5, 380, -15); }
+    await mg; emote(W, "♥︎", PINK); emote(M, "♥︎", PINK); await wait(1500);
+  }, { tags: ["easter"], w: 2.5 });
+  scene("fireworks", async () => {
+    await W.go(M.home + 15); W.face(1); M.face(1).pose("sit").on("lookup"); W.pose("up");
+    for (let i = 0; i < 8; i++) { firework(); if (i % 3 === 0) emote(one([M, W]), "!"); await wait(R(600, 1300)); }
+    M.on("wag"); await wait(1500); W.pose(""); await wait(450);
+  }, { tags: ["fireworks"], w: 2 });
+  scene("pie", async () => {
+    const x = 28, p = prop("pie", x, 70, 8); await p.to(x, 0, 900, "ease-in");
+    await both(M.go(x - 12), W.go(x + 9)); W.face(-1); M.pose("sit").on("tilt", "pant"); W.pose("up"); await wait(2500);
+    emote(M, "♥︎", PINK); W.pose(""); W.on("chew"); M.off("tilt"); M.pose("lie").on("chew"); await wait(4000);
+    await p.fade(800); emote(W, "♪", GOLD); M.off("chew", "pant"); W.off("chew"); await wait(1200);
+  }, { tags: ["thanks"], w: 2.5 });
+  scene("turkey", async () => {
+    const t = prop("turkey", -8, 0, 9, "waddle"); W.pose("up"); emote(W, "!");
+    const tg = t.to(110, 0, 14000, "linear"); await wait(2500); M.face(1); emote(M, "?"); await M.flash("tilt", 1500);
+    await M.go(60); M.on("wag"); await tg; W.pose(""); await wait(450);
+  }, { tags: ["thanks"], w: 2 });
+  scene("pumpkin", async () => {
+    const x = W.home - 12, p = prop("pumpkin", 112, 0, 7); await p.to(x, 0, 2600, "ease-out", "rotate(-720deg)");
+    W.face(-1); emote(W, "?"); await W.jump(4, 350); await both(W.go(x, { cls: "", speed: 18 }), W.liftTo(5.4, 650)); W.pose("up"); emote(W, "!");
+    await M.go(x - 14, { run: 1 }); M.on("wag"); await wait(2500); W.pose(""); await wait(450);
+    await both(W.go(x + 8, { cls: "", speed: 16 }), W.liftTo(0, 550));
+    await both(p.to(-10, 0, 3200, "ease-in", "rotate(-1440deg)"), (async () => { await wait(600); await M.go(M.home, { run: 1 }); })());
+  }, { tags: ["pumpkin"], w: 2 });
+  scene("leafpile", async () => {
+    const x = 30, p = prop("leafpile", x, 0, 13); burst(x, 3, LEAFC, 8, 6); await wait(800); emote(M, "!"); M.on("wag");
+    await M.go(x - 12, { run: 1 }); await both(M.go(x, { cls: "", speed: 26 }), M.jump(9, 480)); burst(x, 5, LEAFC, 26, 14, 1600); M.pose("lie"); await wait(800);
+    await W.go(x + 13, { run: 1 }); await both(W.go(x + 4, { cls: "", speed: 20 }), W.jump(9, 460, -20)); burst(x + 4, 5, LEAFC, 16, 10, 1400); W.pose("loaf"); emote(W, "♪", GOLD);
+    await wait(3500); await M.flash("shake", 900); W.pose(""); await p.fade(1200);
+  }, { tags: ["fall"], w: 2.5 });
+  scene("valentine", async () => {
+    W.hold("heart"); await W.go(M.home + 13); await wait(400); W.hold(null);
+    const h = prop("heart", M.home + 6, 6, 3); M.face(1).on("wag"); await h.to(M.home + 6, 22, 1600, "ease-out", "scale(2)");
+    emote(M, "♥︎", PINK); await M.jump(4, 400); M.on("pant"); h.fade(900); await W.jump(6, 420, -18); await wait(1600);
+  }, { tags: ["love"], w: 2.5 });
+  scene("bloom", async () => { // flowers spring up where Winston hops
+    M.look(W.x).on("wag"); let x = W.home;
+    for (let i = 0; i < 5; i++) { x -= R(9, 13); await W.go(x); keep(prop(one(["flowerP", "flowerY", "flowerB"]), x + 3, 0, 3.4, "grow"), R(60, 120) * 1e3); await wait(350); }
+    await W.jump(7, 450, -20); emote(W, "♪", GOLD); await wait(600);
+  }, { tags: ["spring"], w: 2 });
+  scene("volley", async () => {
+    await W.go(M.home + 26); W.face(-1); M.face(1).on("wag"); const b = prop("beachball", M.x + 5, 16, 5);
+    for (let i = 0; i < 6; i++) { const toW = i % 2 === 0; await b.arc(toW ? W.x - 4 : M.x + 6, 30, toW ? 11 : 16, 900); soft((toW ? W : M).jump(toW ? 5 : 3, 380)); }
+    await b.arc(M.x + 42, 24, 0, 900); await b.arc(M.x + 54, 8, 0, 500); emote(W, "♪", GOLD); await b.fade();
+  }, { tags: ["summer"], w: 2 });
+  scene("rainbow", async () => {
+    const r = prop("rainbow", 50, 2, 56, "soft"); r.animate([{ opacity: 0 }, { opacity: .4 }], 2000);
+    M.face(1).on("lookup"); W.face(-1).pose("up"); await wait(2500); emote(W, "!"); W.pose(""); await wait(450); await W.jump(8, 480, -22); M.on("wag"); await wait(5000); await r.fade(2500);
+  }, { tags: ["stpat", "spring", "easter"], w: 1.5 });
+  /* big, rare, full-screen moments */
+  scene("gust", async () => { M.on("lookup"); W.pose("up"); gust(); await wait(1600); M.off("lookup").on("wag"); await wait(2800); await M.flash("shake", 900); W.pose(""); await wait(450); await W.jump(7, 450, -20); }, { big: 1 });
+  scene("flyover", async () => {
+    const f = prop(theme.flyer || "hotair", -20, 55, portrait() ? 15 : 21); M.face(1).on("lookup"); W.face(-1).pose("up"); emote(W, "!");
+    const fly = f.to(125, 55 + R(-2, 2), R(11000, 15000), "linear"); await wait(5000); M.on("wag"); soft(M.jump(3, 350)); await fly; W.pose(""); await wait(450);
+  }, { big: 1 });
+  scene("aurora", async () => {
+    const g = document.createElement("div"); g.className = "wash"; g.style.background = `linear-gradient(100deg,transparent,${theme.glow || "#4aa3ff"},transparent)`;
+    fx.insertBefore(g, amb); props.add(g);
+    const a = g.animate([{ transform: "translateX(-75vw)" }, { transform: "translateX(105vw)" }], { duration: 6000, easing: "ease-in-out", fill: "both" });
+    M.on("lookup"); W.pose("up"); await fin(a, 6000); M.off("lookup"); W.pose(""); await wait(450); await both(M.jump(3, 380), W.jump(8, 470, 22));
+  }, { big: 1 });
+  scene("grandparade", async () => {
+    await both(M.go(-16, { run: 1 }), W.go(-10, { run: 1 }));
+    M.tp(-16).face(1); W.tp(-16 - RIDEX).face(1); W.lift = RIDE; W.place(); M.on("wag");
+    gust(); await both(M.go(116), W.go(116 - RIDEX, { cls: "", speed: M.speed }));
+    W.lift = 0; W.place(); await both(W.go(W.home), M.go(M.home, { run: 1 }));
+  }, { big: 1 });
+
+  /* ---------- small idle behaviours ---------- */
+  const IDLE_M = [
+    () => M.flash("wag", R(2, 4) * 1e3),
+    async () => { M.pose(M.p === "toy" ? "lie" : "toy"); },
+    async () => { M.pose(""); await wait(R(3, 7) * 1e3); M.pose("lie"); },
+    () => M.flash("tilt", R(1.5, 3) * 1e3),
+    () => M.flash("pant", R(3, 6) * 1e3),
+    () => { M.look(centerOf("bg")); bubble(M, "b_mlook"); return M.flash("lookup", 2600); },
+    () => M.flash("sniff", 2200),
+    async () => { await M.jump(1.5, 260); emote(M, "!"); },
+    () => M.flash("shake", 950),
+    async () => { await M.go(M.home + R(-2, 8)); await wait(1500); M.pose("lie"); },
+    async () => { M.pose("lie"); await wait(800); M.on("asleep"); emote(M, "z", BLUE, 2400); try { await wait(R(6, 12) * 1e3); } finally { M.off("asleep"); } },
+    () => { bubble(M, "b_mtongue"); return M.flash("wag", 2600); },
+    () => { bubble(M, "b_mstick", 3200); return M.flash("tilt", 2600); },
+    async () => { M.pose(""); await M.flash("bow", 1300); await M.flash("wag", 1500); M.pose("lie"); }
+  ];
+  const IDLE_W = [
+    () => W.flash("twitch", 1100),
+    () => W.jump(R(3, 5), 380),
+    () => W.jump(8, 470, one([-22, 22])),
+    async () => { W.pose(W.p === "loaf" ? "" : "loaf"); },
+    async () => { W.pose("up"); await wait(R(2, 4) * 1e3); W.pose(""); },
+    async () => { W.pose("up"); await wait(500); await W.flash("groom", R(2, 4) * 1e3); W.pose(""); },
+    async () => { W.pose("loaf"); await W.flash("chew", R(1.5, 3) * 1e3); },
+    async () => { W.pose("peek"); await wait(R(2, 4) * 1e3); W.pose(""); },
+    async () => { await W.go(W.home + R(-7, 3)); W.face(-1); },
+    async () => { W.pose("loaf"); await wait(700); W.on("asleep"); emote(W, "z", BLUE, 2400); try { await wait(R(5, 10) * 1e3); } finally { W.off("asleep"); } },
+    async () => { await W.jump(1, 160); await W.jump(1, 160); emote(W, "!"); },
+    () => { bubble(W, "b_wface", 2800, 9); return W.flash("twitch", 1200); }
+  ];
+  const idle = (a, list) => { let i; do i = RI(0, list.length - 1); while (i === a.lastIdle); a.lastIdle = i; return list[i](); };
+
+  /* ---------- director ---------- */
+  const recent = [[], []];
+  function pick(big) {
+    const tg = theme.tags || [], rc = recent[big ? 1 : 0];
+    let c = SC.filter(s => !!s.big === big && (!s.tags || s.tags.some(t => tg.includes(t))));
+    const fresh = c.filter(s => !rc.includes(s.name)); if (fresh.length) c = fresh;
+    let r = Math.random() * c.reduce((a, s) => a + s.w, 0);
+    const s = c.find(s => (r -= s.w) < 0) || c[0];
+    rc.push(s.name); while (rc.length > (big ? 2 : 10)) rc.shift();
+    return s;
+  }
+  function clearProps() { props.forEach(p => p.remove()); props.clear(); }
+  async function goHome() { M.calm(); W.calm(); await wait(300); await both(M.go(M.home), W.go(W.home)); M.face(1).pose(M.rest); W.face(-1).pose(W.rest); }
+  async function play(s) {
+    busy = true; M.calm(); W.calm(); await wait(450);
+    try { await s.run(); } finally { clearProps(); }
+    await goHome(); busy = false;
+  }
+  async function setMode(m) {
+    busy = true; await goHome(); mode = m; fx.classList.toggle("night", m === "night");
+    if (m === "calm") { M.pose("sit"); W.pose(""); if (state === "low") { M.on("lookup"); emote(M, "!"); } } // quiet and attentive while readings need attention
+    if (m === "night") { M.pose("lie"); W.pose("loaf"); await wait(900); M.on("asleep"); W.on("asleep"); }
+    busy = false;
+  }
+  async function direct(intro) {
+    const g = ++gen; busy = true; mode = null;
+    try {
+      clearProps(); M.calm(); W.calm(); M.tp(-16); W.tp(116);
+      await both(M.go(M.home, { run: 1 }), W.go(W.home, { run: 1 })); M.face(1).pose(M.rest); W.face(-1).pose(W.rest); busy = false;
+      if (intro && !theme.calm && !isNight()) { gust(); await wait(1500); }
+      const forced = Q.get("scene");
+      let tScene = Date.now() + R(25, 60) * 1e3 * FAST, tBig = Date.now() + R(12, 25) * 6e4 * FAST;
+      while (g === gen) {
+        const want = state !== "ok" || theme.calm ? "calm" : isNight() ? "night" : "play";
+        if (want !== mode) await setMode(want);
+        if (mode === "play") {
+          let s = null;
+          if (forced) s = SC.find(x => x.name === forced);
+          else if (celebrate) { celebrate = false; s = SC.find(x => x.name === "dance"); }
+          else if (Date.now() > tBig) { s = pick(true); tBig = Date.now() + R(12, 25) * 6e4 * FAST; }
+          else if (Date.now() > tScene) s = pick(false);
+          if (s) { await play(s); tScene = Date.now() + R(60, 150) * 1e3 * FAST; }
+          else await both(chance(.55) && idle(M, IDLE_M), chance(.55) && idle(W, IDLE_W));
+        } else if (mode === "night" && chance(.35)) emote(chance(.5) ? M : W, "z", BLUE, 2600);
+        await wait(R(3.5, 9) * 1e3 * (forced ? .3 : 1));
+      }
+    } catch (e) {
+      if (e !== CANCEL) { console.error("fx", e); setTimeout(() => { if (g === gen && on) direct(); }, 5000); }
+    }
+  }
+
+  /* ---------- theme + lifecycle ---------- */
+  function applyTheme(t) {
+    theme = t; sky.style.background = t.sky || "none"; decor.innerHTML = t.decor ? t.decor() : "";
+    setAmb(...(t.amb || [])); M.dress(t.hats && t.hats.m); W.dress(t.hats && t.hats.w);
+    clearInterval(tickT); if (t.tick) tickT = setInterval(() => { if (on && mode === "play" && !document.hidden) t.tick(); }, 6000);
+  }
+  function wipe() { gen++; busy = false; [...stage.children].forEach(c => c.classList.contains("ch") || c.remove()); props.clear(); }
+  function checkTheme() {
+    if (!ready) return; const t = resolveTheme(); if (t === theme) return;
+    if (!on) return applyTheme(t);
+    wipe(); fx.classList.add("swap"); // fade out, redress, fade in with a flourish
+    setTimeout(() => { applyTheme(t); fx.classList.remove("swap"); if (on) direct(true); }, 1400);
+  }
+  function layout() { M.home = portrait() ? 17 : 10.5; W.home = portrait() ? 85 : 90; }
+  function setEnabled(b) {
+    if (!ready) return; on = b; document.body.classList.toggle("simple", !b);
+    wipe(); if (b) { layout(); applyTheme(resolveTheme()); direct(true); }
+  }
+  function reading(o) {
+    const prev = state;
+    state = !o ? "none" : o.stale ? "stale" : o.v < o.low ? "low" : "ok";
+    if (!on || !o || !o.fresh) return;
+    if (prev === "low" && state === "ok") celebrate = true;
+    if (mode === "play" && !busy) { // glance up at the number as it pulses
+      const g = gen, x = centerOf("bg"); M.look(x).on("lookup"); W.look(x); bubble(M, "b_mlook");
+      setTimeout(() => { if (g === gen && !busy) M.off("lookup"); }, 2800);
+    }
+  }
+  let ready = false;
+  function init() {
+    if (!IMG.m_stand) { document.body.classList.add("simple"); $("fxbtn").style.display = "none"; return; } // sprites.js missing: plain display
+    ready = true; fx = document.createElement("div"); fx.id = "fx";
+    fx.innerHTML = '<div id="fx-sky"></div><div id="fx-amb"></div><div id="fx-decor"></div><div id="fx-stage"></div>';
+    document.body.insertBefore(fx, document.body.firstChild);
+    [sky, amb, decor, stage] = fx.children;
+    M = new Actor("millie", CAST.millie); W = new Actor("winston", CAST.winston);
+    let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => setEnabled(on), 400); });
+    setInterval(checkTheme, 60000);
+    setEnabled(cfg.simple !== "1");
+  }
+  return { init, setEnabled, reading, checkTheme, themes: THEMES, scenes: SC, PROPS, ACC, SPRITES, CAST,
+    addTheme: t => THEMES.unshift(t), addScene: scene,
+    api: () => ({ M, W, wait, both, soft, prop, emote, bubble, burst, gust, firework, keep, R, one, chance }) };
+})();
+
+/* Simple mode: one tap turns every decoration off (the reading pulse stays). */
+function syncFx() {
+  $("fxbtn").textContent = "Animations: " + (cfg.simple === "1" ? "Off" : "On");
+  FX.setEnabled(cfg.simple !== "1"); FX.checkTheme();
+}
+$("fxbtn").onclick = () => { cfg.simple = cfg.simple === "1" ? "0" : "1"; localStorage.setItem("gd.cfg", JSON.stringify(cfg)); syncFx(); };
+FX.themes.forEach(t => $("f_theme").add(new Option(t.name, t.id)));
+FX.init(); $("fxbtn").textContent = "Animations: " + (cfg.simple === "1" ? "Off" : "On");
+
+window.addEventListener("resize", drawChart);
+tick(); setInterval(tick, 15000);
+drift(); setInterval(drift, 120000);
+keepAwake();
+poll();
+</script>
+</body>
+</html>
