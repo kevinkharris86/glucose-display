@@ -21,9 +21,17 @@ A small web app (`index.html` + `sprites.js`) that displays real-time Dexcom CGM
 - `theme` — `auto` (by date) or a theme id to pin one.
 
 ## FX system (Millie the golden retriever & Winston the Holland Lop)
-All decoration is the `FX` module near the bottom of `index.html`.
+Seasonal decoration is the `FX` module near the bottom of `index.html`. Christmas animals use `christmas.js` and the illustrated sheets in `assets/christmas/`.
 
-**Safety rule: everything decorative lives in `#fx`, a fixed layer with `z-index:0` BEHIND `#app`.** Characters, props and particles can pass behind the number but can never cover it, and FX code never touches polling/rendering. When a reading is low, stale or missing the characters go quiet ("calm" mode: no scenes); 9 pm–6:30 am they sleep and the layer dims. Keep it that way.
+**Safety rule: the original decoration stays in `#fx` behind `#app`.** The Christmas canvas sits above the display with `pointer-events:none`, below the controls and Settings. It erases its pixels over the number's full pulse envelope, supporting information, header, graph, and controls. Animals can pass behind those protected regions and never cover important information. FX code never changes polling, chart rendering, or the measurement layout. When a reading is low, stale or missing the characters go quiet; 9 pm–6:30 am they sleep and the layer dims. Keep it that way.
+
+### Illustrated Christmas pack (approved November 2026)
+- Replaces the photo animals **only** for the Christmas theme; other seasons retain the existing characters.
+- Two transparent 4×4 sheets, 16 separately drawn frames per animal: eight walking/hopping phases plus eight gestures/rest poses. Mature proportions and restrained expressions, Santa hat for Millie and burgundy scarf for Winston.
+- `christmas.js` draws at about 12 fps using time-based frame selection and a lightweight canvas. Twelve scenes, 55–85 seconds between starts, with no repeat among the previous six. The number's new-reading pulse stays on.
+- The overlay is outside `#app`, never changes its DOM, CSS, number, information or chart layout, and allows taps to pass through. It pauses offscreen and honors Animations On/Off. Loading failures leave readings and polling working.
+- Tests: `node --test tools/christmas.test.cjs`. Local preview: `node tools/preview-server.cjs`, then `http://127.0.0.1:8201/?demo&theme=christmas&fast`. Force a vignette with `&xscene=crossing-paths`; force sleep with `&night`.
+- Source art was generated with the built-in image generation tool using the user's approved likeness preview. `tools/prepare-sheets.ps1` slices the equal-grid art and aligns scale/feet into 384px tiles; no poses are synthesized by transforms. Prompt specification is in `assets/christmas/ART.md`.
 
 - **Characters** are cutouts of the family's real photos (white sticker outline), stored as data-URI WebP in `sprites.js` (`window.GD_SPRITES`). If `sprites.js` is missing the app falls back to the plain display.
   - `SPRITES` — per-photo display size, facing, and hat/neck/mouth anchor points.

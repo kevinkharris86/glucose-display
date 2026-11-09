@@ -192,6 +192,7 @@ body:not(.simple) #bg,body:not(.simple) #side,body:not(.simple) header{text-shad
 </div>
 
 <script src="sprites.js"></script>
+<script src="christmas.js?v=20261109"></script>
 <script>
 "use strict";
 const APP_ID = "d89443d2-327c-4a6f-89e5-496bbb0317db";
@@ -1011,6 +1012,7 @@ const FX = (() => {
     busy = false;
   }
   async function direct(intro) {
+    if (theme.id === "christmas" && window.GD_CHRISTMAS) { busy = false; return; }
     const g = ++gen; busy = true; mode = null;
     try {
       clearProps(); M.calm(); W.calm(); M.tp(-16); W.tp(116);
@@ -1040,6 +1042,9 @@ const FX = (() => {
   /* ---------- theme + lifecycle ---------- */
   function applyTheme(t) {
     theme = t; sky.style.background = t.sky || "none"; decor.innerHTML = t.decor ? t.decor() : "";
+    const illustratedChristmas = t.id === "christmas" && !!window.GD_CHRISTMAS;
+    stage.style.display = illustratedChristmas ? "none" : "";
+    if (window.GD_CHRISTMAS) window.GD_CHRISTMAS.setEnabled(on && illustratedChristmas);
     setAmb(...(t.amb || [])); M.dress(t.hats && t.hats.m); W.dress(t.hats && t.hats.w);
     clearInterval(tickT); if (t.tick) tickT = setInterval(() => { if (on && mode === "play" && !document.hidden) t.tick(); }, 6000);
   }
@@ -1053,9 +1058,11 @@ const FX = (() => {
   function layout() { M.home = portrait() ? 17 : 10.5; W.home = portrait() ? 85 : 90; }
   function setEnabled(b) {
     if (!ready) return; on = b; document.body.classList.toggle("simple", !b);
-    wipe(); if (b) { layout(); applyTheme(resolveTheme()); direct(true); }
+    wipe(); if (!b && window.GD_CHRISTMAS) window.GD_CHRISTMAS.setEnabled(false);
+    if (b) { layout(); applyTheme(resolveTheme()); direct(true); }
   }
   function reading(o) {
+    if (window.GD_CHRISTMAS) window.GD_CHRISTMAS.reading(o);
     const prev = state;
     state = !o ? "none" : o.stale ? "stale" : o.v < o.low ? "low" : "ok";
     if (!on || !o || !o.fresh) return;
