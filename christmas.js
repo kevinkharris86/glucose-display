@@ -6,16 +6,21 @@ window.GD_CHRISTMAS = (() => {
   const Q = new URLSearchParams(location.search);
   const fast = Q.has('fast') ? .12 : 1;
   const WALK = [0,1,2,3,4,5,6,7];
-  const assets = ['millie','winston'].map(name => {
+  const images = names => names.map(name => {
     const image = new Image();
     image.src = new URL(`assets/christmas/${name}.png`, scriptBase).href;
     return image;
   });
-  const loaded = Promise.all(assets.map(image => new Promise(resolve => {
+  const assets = images(['millie','winston']);
+  const danceAssets = images(['millie-dance','winston-dance']);
+  const waitForImages = list => Promise.all(list.map(image => new Promise(resolve => {
     if (image.complete) return resolve(image.naturalWidth > 0);
     image.onload = () => resolve(true);
     image.onerror = () => resolve(false);
   })));
+  const loaded = waitForImages(assets);
+  let danceReady = false;
+  waitForImages(danceAssets).then(results => { danceReady = results.every(Boolean); });
   let canvas, ctx, enabled = false, ready = false, raf = 0, lastDraw = 0;
   let width = 0, height = 0, floor = 0, sizes = [], protectedRects = [];
   let homePositions = [.105,.90];
@@ -65,8 +70,8 @@ window.GD_CHRISTMAS = (() => {
     const segments = [];
     const api = {
       segments,
-      hold(frames,ms,fps = 6) {
-        segments.push({t,d:ms,x0:x,x1:x,dir,frames:Array.isArray(frames)?frames:[frames],fps});
+      hold(frames,ms,fps = 6,sheet = 0) {
+        segments.push({t,d:ms,x0:x,x1:x,dir,frames:Array.isArray(frames)?frames:[frames],fps,sheet});
         t += ms; return api;
       },
       face(d) { dir = d; return api; },
@@ -97,12 +102,21 @@ window.GD_CHRISTMAS = (() => {
     ['gentle-check-in',(m,w) => { m.hold([14,12,14,8,11,8,14],6500,1).hold(14,1500); w.hold([8,12,8,11,8,9,8],6500,1); }],
     ['winston-short-hop',(m,w) => { w.go(.81).hold([8,13,8],2100,2).go(.70).hold([8,10,8],2300,2).home(); m.hold([14,12,14],8000,1); }],
     ['settling-down',(m,w) => { m.hold([8,10,8,14,14,15,14],7000,1); w.hold([8,10,8,14,15,14,8],7000,1); }],
-    ['crossing-paths',(m,w) => { m.hold(8,400).go(.64).hold([8,13,8],2200,2).home(); w.hold(8,1800).go(.38).hold([8,12,8],2300,2).home(); }]
+    ['crossing-paths',(m,w) => { m.hold(8,400).go(.64).hold([8,13,8],2200,2).home(); w.hold(8,1800).go(.38).hold([8,12,8],2300,2).home(); }],
+    ['babydoll-dance',(m,w) => {
+      for (const dancer of [m,w]) dancer.face(1)
+        .hold([0,1,2,3],800,5,1)          // rise onto hind legs
+        .hold([4,5,6,7],3000,8,1)        // side step-touches
+        .hold([8,9,10,11],3000,8,1)      // shoulder shimmies and points
+        .hold([12,13,14,15],4000,8,1)    // open-arm swings and knee bounces
+        .hold([3,2,1,0],800,5,1);        // settle back down
+    }]
   ];
   function startScene(now) {
     const forced = Q.get('xscene');
-    const choices = SCENES.filter(s => !recent.includes(s[0]));
-    const selected = SCENES.find(s => s[0] === forced) || choices[Math.floor(Math.random()*choices.length)];
+    const available = SCENES.filter(s => s[0] !== 'babydoll-dance' || danceReady);
+    const choices = available.filter(s => !recent.includes(s[0]));
+    const selected = available.find(s => s[0] === forced) || choices[Math.floor(Math.random()*choices.length)];
     const m = track(0), w = track(1); selected[1](m,w);
     m.face(-1).hold(14,500); w.face(-1).hold(8,500);
     scene = {name:selected[0],start:now,tracks:[m.segments,w.segments],duration:Math.max(m.duration,w.duration)};
@@ -122,7 +136,7 @@ window.GD_CHRISTMAS = (() => {
       if (seg) {
         const age = elapsed-seg.t, index = Math.floor(age*seg.fps/1000)%seg.frames.length;
         return {x:seg.x0+(seg.x1-seg.x0)*Math.min(1,age/seg.d),dir:seg.dir,
-          frame:seg.frames[index],hop:seg.hop ? Math.max(0,Math.sin(index/7*Math.PI))*sizes[who]*.14 : 0};
+          frame:seg.frames[index],sheet:seg.sheet||0,hop:seg.hop ? Math.max(0,Math.sin(index/7*Math.PI))*sizes[who]*.14 : 0};
       }
     }
     if (readingUntil>now) base.frame = 11;
@@ -138,13 +152,16 @@ window.GD_CHRISTMAS = (() => {
     ctx.save();
     ctx.globalAlpha = sleeping ? .42 : state==='ok' ? 1 : .6;
     for (let who=0;who<2;who++) {
-      const s=sample(who,now), image=assets[who], size=sizes[who];
+      const s=sample(who,now), image=(s.sheet?danceAssets:assets)[who];
+      const headroom=floor-Math.max(...protectedRects.slice(2,4).map(r=>r.y+r.h))-12;
+      const size=s.sheet?Math.min(sizes[who],headroom/.84):sizes[who];
       const tileW=image.naturalWidth/4,tileH=image.naturalHeight/4;
       ctx.save(); ctx.translate(s.x*width,floor+size*.10-s.hop);
       ctx.scale(s.dir,1);
       ctx.drawImage(image,(s.frame%4)*tileW,Math.floor(s.frame/4)*tileH,tileW,tileH,-size/2,-size,size,size);
       ctx.restore();
       canvas.dataset[who?'winstonFrame':'millieFrame']=String(s.frame);
+      canvas.dataset[who?'winstonSheet':'millieSheet']=s.sheet?'dance':'original';
     }
     ctx.restore();
     // Erase the union of protected areas, including overlapping rectangles.
