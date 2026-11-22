@@ -6,9 +6,9 @@ const path=require('node:path');
 const source=fs.readFileSync(path.join(__dirname,'../christmas.js'),'utf8');
 function harness(query='',missingDance=false) {
   let now=0, callback, handle=0, calls=[], created=[], translations=[];
-  const rectangles={bg:[260,100,410,240],side:[710,170,180,170],chartwrap:[35,440,954,160],clock:[880,20,110,40],status:[35,20,160,30],controls:[550,540,440,45]};
+  const rectangles={bg:[260,100,410,240],side:[710,170,180,170],age:[715,305,100,28],chartwrap:[35,440,954,160],clock:[880,20,110,40],status:[35,20,160,30],controls:[550,540,440,45]};
   const context={globalAlpha:1,setTransform(){},clearRect(){},save(){},restore(){},translate(...p){translations.push(p);},scale(){},
-    drawImage(...args){calls.push(args);},fillRect(...args){calls.push(['erase',...args]);}};
+    drawImage(...args){calls.push(args);},fillRect(...args){calls.push(['erase',...args,this.globalAlpha]);}};
   const canvas={style:{},dataset:{},setAttribute(){},getContext(){return context;}};
   const elements=Object.fromEntries(Object.entries(rectangles).map(([id,[left,top,width,height]])=>[id,{getBoundingClientRect(){return {left,top,width,height};}}]));
   const listeners={};
@@ -30,23 +30,41 @@ function harness(query='',missingDance=false) {
     clearCalls(){calls.length=0;},get running(){return !!callback;}};
 }
 const healthy={v:123,low:70,stale:false,fresh:true};
-test('all sixteen vignettes animate, preserving the original eight-frame gaits',async()=>{
+test('all seventeen vignettes animate, including the sixteen-frame walk',async()=>{
   const names=harness().api.sceneNames;
-  assert.equal(names.length,16);
+  assert.equal(names.length,17);
   for(const name of names) {
     const h=harness('?fast&xscene='+name); h.api.reading(healthy); await h.api.setEnabled(true);
     const seen=[new Set(),new Set()];
-    for(let t=0;t<37000;t+=90) {
+    for(let t=0;t<37000;t+=40) {
       h.step(t);
       const d=h.canvas.dataset;
       if(d.millieFrame!==undefined)seen[0].add(+d.millieFrame);
       if(d.winstonFrame!==undefined)seen[1].add(+d.winstonFrame);
     }
     assert.ok(seen[0].size>1 || seen[1].size>1,name+' must use different drawings');
-    if(name==='crossing-paths') for(const frames of seen) for(let i=0;i<8;i++)assert.ok(frames.has(i),'missing gait frame '+i);
+    if(name==='crossing-paths') {
+      for(let i=0;i<16;i++)assert.ok(seen[0].has(i),'missing walk frame '+i);
+      for(let i=0;i<8;i++)assert.ok(seen[1].has(i),'missing hop frame '+i);
+    }
     assert.deepEqual(h.created,['canvas']);
     assert.ok(h.calls.some(c=>c[0]==='erase'&&c[1]===33&&c[2]===438),'graph must be erased from overlay');
   }
+});
+test('a walking dog advances continuously and information dimming cannot erase the animal',async()=>{
+  const h=harness('?fast&xscene=crossing-paths'); h.api.reading(healthy); await h.api.setEnabled(true);
+  let previous=-Infinity;
+  for(let t=0;t<20000;t+=40){
+    h.clearCalls();h.step(t);
+    if(h.canvas.dataset.millieSheet!=='walk')continue;
+    const x=h.translations.at(-2)[0];
+    assert.ok(x>=previous,'outbound walk must never step backward');
+    previous=x;
+    assert.equal(h.calls.filter(c=>typeof c[0]==='object').length,2);
+    assert.ok(h.calls.some(c=>c[0]==='erase' && c[1]===713 && c.at(-1)===.55));
+    assert.ok(!h.calls.some(c=>c[0]==='erase' && c[1]===698),'no full side rectangle');
+  }
+  assert.ok(previous>500,'test exercised the outbound walk');
 });
 test('number pulses and changing digit widths cannot resize any sprite pack',async()=>{
   const h=harness('?fast&xscene=babydoll-dance');h.api.reading(healthy);await h.api.setEnabled(true);
@@ -92,7 +110,7 @@ test('missing dance artwork leaves every original vignette and animal working',a
   for(let t=0;t<160000;t+=100) {
     h.step(t);assert.notEqual(h.canvas.dataset.scene,'babydoll-dance');
     if(t>0) {
-      assert.equal(h.canvas.dataset.millieSheet,'original');
+      assert.ok(['original','walk'].includes(h.canvas.dataset.millieSheet));
       assert.notEqual(h.canvas.dataset.winstonSheet,'dance');
       assert.notEqual(h.canvas.dataset.winstonSheet,'rise');
     }
@@ -120,6 +138,7 @@ test('normal scenes are spaced about a minute apart and do not repeat recent pic
     if(name&&name!=='rest'&&name!==previous) {starts.push({t,name});previous=name;}
   }
   assert.ok(starts.length>=8);
+  assert.ok(starts.slice(2,5).some(s=>s.name==='babydoll-dance'),'surprise dance appears early in rotation');
   for(let i=1;i<starts.length;i++) {
     assert.ok(starts[i].t-starts[i-1].t>=55000);
     assert.ok(starts[i].t-starts[i-1].t<=85000);

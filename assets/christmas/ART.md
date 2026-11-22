@@ -26,6 +26,8 @@ The timing adapts the Jamie Miller Babydoll two-step's side steps, shimmies, poi
 
 ## November 21 quality refresh
 
+The subsequent motion update adds two built-in image generation sheets. `millie-walk-v3.png` depicts 16 consecutive right-facing profile walk frames with a fixed camera, constant body scale, and a common floor. Its muzzle is registered to the same horizontal coordinate in every tile. `winston-play.png` uses frames 0–7 for a playful binky (crouch, push, extend, tuck, spring, reach, land, settle) and frames 8–15 for an upright paw wave. Both sheets use the approved illustrated likeness and Christmas accessories, a transparent 4×4 grid, and fully contained poses.
+
 Reviewed the walking, hopping and both dance sheets. Re-registered all four original packs using `prepare-sheets.ps1 -GridAnchor`, keeping each cell's horizontal root instead of re-centering its changing silhouette. One shared scale per sheet and a common floor keep feet aligned. Original dance sheets now serve only as rise/settle transitions. Runtime scale is fixed across packs and independent of pulse/digit bounds.
 
 New art generated with the built-in image generation tool from the same approved reference:
