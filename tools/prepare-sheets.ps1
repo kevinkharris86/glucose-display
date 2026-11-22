@@ -1,6 +1,6 @@
 # Normalize generated equal-grid frames for stable feet and consistent scale.
 # This slices/aligns the original drawings; it does not synthesize any poses.
-param([Parameter(Mandatory=$true)][string]$Source, [Parameter(Mandatory=$true)][string]$Destination)
+param([Parameter(Mandatory=$true)][string]$Source, [Parameter(Mandatory=$true)][string]$Destination, [switch]$GridAnchor)
 $ErrorActionPreference='Stop'
 Add-Type -AssemblyName System.Drawing
 Add-Type -TypeDefinition @'
@@ -9,7 +9,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 public static class SpriteTiles {
-  public static void Prepare(string source,string destination) {
+  public static void Prepare(string source,string destination,bool gridAnchor) {
     using(var image=new Bitmap(source)) {
       var bounds=new Rectangle[16]; int maxW=0,maxH=0;
       var data=image.LockBits(new Rectangle(0,0,image.Width,image.Height),ImageLockMode.ReadOnly,PixelFormat.Format32bppArgb);
@@ -34,7 +34,9 @@ public static class SpriteTiles {
         for(int n=0;n<16;n++) {
           var b=bounds[n]; float w=b.Width*scale,h=b.Height*scale;
           // All frames share a fixed .9-tile floor and the same scale.
-          g.DrawImage(image,new RectangleF((n%4)*tile+(tile-w)/2,(n/4)*tile+tile*.9f-h,w,h),b,GraphicsUnit.Pixel);
+          float cellW=image.Width/4f;
+          float dx=gridAnchor?(tile-cellW*scale)/2+(b.X-(n%4)*image.Width/4)*scale:(tile-w)/2;
+          g.DrawImage(image,new RectangleF((n%4)*tile+dx,(n/4)*tile+tile*.9f-h,w,h),b,GraphicsUnit.Pixel);
         }
         output.Save(destination,ImageFormat.Png);
       }
@@ -43,4 +45,4 @@ public static class SpriteTiles {
   }
 }
 '@ -ReferencedAssemblies System.Drawing.Common,System.Drawing.Primitives,System.Runtime.InteropServices,System.Private.Windows.Core,System.Private.Windows.GdiPlus,System.Console
-[SpriteTiles]::Prepare($Source,$Destination)
+[SpriteTiles]::Prepare($Source,$Destination,$GridAnchor.IsPresent)

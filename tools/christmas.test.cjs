@@ -5,9 +5,9 @@ const vm=require('node:vm');
 const path=require('node:path');
 const source=fs.readFileSync(path.join(__dirname,'../christmas.js'),'utf8');
 function harness(query='',missingDance=false) {
-  let now=0, callback, handle=0, calls=[], created=[];
+  let now=0, callback, handle=0, calls=[], created=[], translations=[];
   const rectangles={bg:[260,100,410,240],side:[710,170,180,170],chartwrap:[35,440,954,160],clock:[880,20,110,40],status:[35,20,160,30],controls:[550,540,440,45]};
-  const context={setTransform(){},clearRect(){},save(){},restore(){},translate(){},scale(){},
+  const context={globalAlpha:1,setTransform(){},clearRect(){},save(){},restore(){},translate(...p){translations.push(p);},scale(){},
     drawImage(...args){calls.push(args);},fillRect(...args){calls.push(['erase',...args]);}};
   const canvas={style:{},dataset:{},setAttribute(){},getContext(){return context;}};
   const elements=Object.fromEntries(Object.entries(rectangles).map(([id,[left,top,width,height]])=>[id,{getBoundingClientRect(){return {left,top,width,height};}}]));
@@ -25,14 +25,14 @@ function harness(query='',missingDance=false) {
     Math:Object.assign(Object.create(Math),{random:()=>.5}),performance:{now:()=>now},
     requestAnimationFrame(fn){callback=fn;return ++handle;},cancelAnimationFrame(){callback=null;}};
   vm.runInNewContext(source,scope);
-  return {api:scope.window.GD_CHRISTMAS,canvas,context,calls,created,document,listeners,
+  return {api:scope.window.GD_CHRISTMAS,canvas,context,calls,created,document,listeners,rectangles,translations,
     step(t){now=t;const fn=callback;callback=null;if(fn)fn(t);},
     clearCalls(){calls.length=0;},get running(){return !!callback;}};
 }
 const healthy={v:123,low:70,stale:false,fresh:true};
-test('all thirteen vignettes animate, preserving the original eight-frame gaits',async()=>{
+test('all sixteen vignettes animate, preserving the original eight-frame gaits',async()=>{
   const names=harness().api.sceneNames;
-  assert.equal(names.length,13);
+  assert.equal(names.length,16);
   for(const name of names) {
     const h=harness('?fast&xscene='+name); h.api.reading(healthy); await h.api.setEnabled(true);
     const seen=[new Set(),new Set()];
@@ -48,6 +48,27 @@ test('all thirteen vignettes animate, preserving the original eight-frame gaits'
     assert.ok(h.calls.some(c=>c[0]==='erase'&&c[1]===33&&c[2]===438),'graph must be erased from overlay');
   }
 });
+test('number pulses and changing digit widths cannot resize any sprite pack',async()=>{
+  const h=harness('?fast&xscene=babydoll-dance');h.api.reading(healthy);await h.api.setEnabled(true);
+  const widths=[new Set(),new Set()];
+  for(let t=100;t<23000;t+=100){
+    h.rectangles.bg[0]=t%300?260:140;h.rectangles.bg[2]=t%300?410:650;
+    h.clearCalls();h.step(t);
+    const draws=h.calls.filter(c=>typeof c[0]==='object');
+    for(const c of draws) {const who=c[8]>200?0:1;widths[who].add(c[8]);}
+  }
+  assert.equal(widths[0].size,1);assert.equal(widths[1].size,1);
+});
+test('rabbit pushes off in discrete fast hops and rests on the ground between hops',async()=>{
+  const h=harness('?fast&xscene=winston-short-hop');h.api.reading(healthy);await h.api.setEnabled(true);
+  for(let t=0;t<7200;t+=40)h.step(t);
+  const samples=[];
+  for(let t=7200;t<=7720;t+=40){h.step(t);samples.push(h.translations.at(-1));}
+  assert.equal(samples[0][0],samples[1][0]);
+  assert.ok(Math.max(...samples.map(p=>p[1]))-Math.min(...samples.map(p=>p[1]))>20);
+  assert.ok(Math.abs(samples.at(-1)[1]-samples[0][1])<.01);
+  assert.ok(samples.at(-1)[0]<samples[0][0]);
+});
 test('both animals dance in sync for exactly ten seconds, with separate rise and settle',async()=>{
   const h=harness('?fast&xscene=babydoll-dance');h.api.reading(healthy);await h.api.setEnabled(true);
   let start=null,firstDance=null,lastDance=null;const frames=new Set();
@@ -59,7 +80,7 @@ test('both animals dance in sync for exactly ten seconds, with separate rise and
     if(d.millieSheet==='dance') {
       assert.equal(d.millieFrame,d.winstonFrame);
       frames.add(+d.millieFrame);
-      if(+d.millieFrame>=4) {if(firstDance===null)firstDance=t;lastDance=t;}
+      if(firstDance===null)firstDance=t;lastDance=t;
     }
   }
   assert.equal(firstDance-start,800);
@@ -72,7 +93,8 @@ test('missing dance artwork leaves every original vignette and animal working',a
     h.step(t);assert.notEqual(h.canvas.dataset.scene,'babydoll-dance');
     if(t>0) {
       assert.equal(h.canvas.dataset.millieSheet,'original');
-      assert.equal(h.canvas.dataset.winstonSheet,'original');
+      assert.notEqual(h.canvas.dataset.winstonSheet,'dance');
+      assert.notEqual(h.canvas.dataset.winstonSheet,'rise');
     }
   }
   assert.equal(h.canvas.style.display,'block');

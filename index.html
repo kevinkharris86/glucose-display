@@ -192,7 +192,7 @@ body:not(.simple) #bg,body:not(.simple) #side,body:not(.simple) header{text-shad
 </div>
 
 <script src="sprites.js"></script>
-<script src="christmas.js?v=20261109c"></script>
+<script src="christmas.js?v=20261121"></script>
 <script>
 "use strict";
 const APP_ID = "d89443d2-327c-4a6f-89e5-496bbb0317db";
@@ -711,9 +711,9 @@ const FX = (() => {
       hats: { m: { head: ACC.pilgrim }, w: { neck: ACC.scarf("#C7692B", GOLD) } },
       decor: () => D("pumpkin", 3, 6) + D("pumpkin", 96.500, 7.500) + D("pie", 90, 5) + D("leafpile", 6.500, 6) },
     { id: "christmas", name: "Christmas", when: (d, md) => md >= 1101 && md <= 1230, // Nov 1 – Dec 30
-      sky: sky2("rgba(30,120,75,.30)", "rgba(160,30,35,.14)"), glow: "#ff6b6b", amb: ["snow", 30], tags: ["xmas", "snow"],
+      sky: 'linear-gradient(to bottom,rgba(3,8,16,.25),rgba(3,8,16,.10) 60%,#05070a 82%),url("assets/christmas/winter-night.png") center top/100% 86% no-repeat', glow: "#8ba8bc", amb: ["snow", 30], tags: ["xmas", "snow"],
       hats: { m: { head: ACC.santa, neck: ACC.scarf("#1F7A4A", "#fff") }, w: { head: ACC.antlers, neck: ACC.scarf("#D8322F", "#fff") } },
-      decor: () => lights(["#FF5A5F", "#FFD23F", "#3ddc84", "#4AA3FF"]) + mounds("#eef4fa") + D("tree", 96.500, 12) + D("present", 1.800, 3.600) + D("star", 5, 3.200, 50, "twk"),
+      decor: () => "",
       carry: "candycane", flyer: "sleigh", flutter: "cardinal" },
     { id: "winter", name: "Winter", when: d => [11, 0, 1].includes(d.getMonth()),
       sky: sky2("rgba(60,110,190,.26)", "rgba(120,160,220,.10)"), glow: "#9fc3ff", amb: ["snow", 24], tags: ["snow"],
