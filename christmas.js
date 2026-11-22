@@ -206,24 +206,18 @@ window.GD_CHRISTMAS = (() => {
     // Use the live DOM boxes, including the existing slow burn-in drift/pulse.
     // Refresh at most once per second, keeping the tablet's drawing cost low.
     if (now-lastBounds>1000) { layoutBounds(); lastBounds = now; }
-    ctx.save();
-    ctx.globalAlpha = sleeping ? .42 : state==='ok' ? 1 : .6;
+    // Reading and bedtime states select poses, without fading the animals.
+    ctx.globalAlpha = 1;
     for (let who=0;who<2;who++) {
       const s=sample(who,now);
       paint(who,s);
       canvas.dataset[who?'winstonFrame':'millieFrame']=String(s.frame);
       canvas.dataset[who?'winstonSheet':'millieSheet']=sheetNames[s.sheet||0];
     }
-    ctx.restore();
-    // Keep the chart fully clear. Dim fur behind individual text elements
-    // without cutting a large invisible hole through the walking path.
-    ctx.save(); ctx.globalCompositeOperation='destination-out';
+    // Keep the chart and header clear. Reading details paint above the animals.
+    ctx.save();
+    ctx.globalCompositeOperation='destination-out';
     protectedRects.forEach(r => ctx.fillRect(r.x,r.y,r.w,r.h));
-    ctx.globalAlpha=.55;
-    for(const id of ['arrow','delta','unit','age']) {
-      const r=box(id,2);
-      if(r && r.w>4 && r.h>4)ctx.fillRect(r.x,r.y,r.w,r.h);
-    }
     ctx.restore();
   }
   let lastBounds=0;
@@ -242,7 +236,7 @@ window.GD_CHRISTMAS = (() => {
     homePositions[1]=Math.min(homePositions[1],1-.45*sizes[1]/width);
     // The number is painted above the animals by #app's existing z-index:1.
     // Its actual glyphs cover the fur naturally, avoiding rectangular cutouts.
-    // Keep the supporting information, graph, header and controls fully clear.
+    // Keep the graph, header and controls fully clear.
   }
   function loop(now) {
     raf=0;

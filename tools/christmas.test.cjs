@@ -8,7 +8,7 @@ function harness(query='',missingDance=false) {
   let now=0, callback, handle=0, calls=[], created=[], translations=[];
   const rectangles={bg:[260,100,410,240],side:[710,170,180,170],age:[715,305,100,28],chartwrap:[35,440,954,160],clock:[880,20,110,40],status:[35,20,160,30],controls:[550,540,440,45]};
   const context={globalAlpha:1,setTransform(){},clearRect(){},save(){},restore(){},translate(...p){translations.push(p);},scale(){},
-    drawImage(...args){calls.push(args);},fillRect(...args){calls.push(['erase',...args,this.globalAlpha]);}};
+    drawImage(...args){calls.push([...args,this.globalAlpha]);},fillRect(...args){calls.push(['erase',...args,this.globalAlpha]);}};
   const canvas={style:{},dataset:{},setAttribute(){},getContext(){return context;}};
   const elements=Object.fromEntries(Object.entries(rectangles).map(([id,[left,top,width,height]])=>[id,{getBoundingClientRect(){return {left,top,width,height};}}]));
   const listeners={};
@@ -51,7 +51,7 @@ test('all seventeen vignettes animate, including the sixteen-frame walk',async()
     assert.ok(h.calls.some(c=>c[0]==='erase'&&c[1]===33&&c[2]===438),'graph must be erased from overlay');
   }
 });
-test('a walking dog advances continuously and information dimming cannot erase the animal',async()=>{
+test('a walking dog advances continuously and masks stay outside the reading details',async()=>{
   const h=harness('?fast&xscene=crossing-paths'); h.api.reading(healthy); await h.api.setEnabled(true);
   let previous=-Infinity;
   for(let t=0;t<20000;t+=40){
@@ -61,8 +61,9 @@ test('a walking dog advances continuously and information dimming cannot erase t
     assert.ok(x>=previous,'outbound walk must never step backward');
     previous=x;
     assert.equal(h.calls.filter(c=>typeof c[0]==='object').length,2);
-    assert.ok(h.calls.some(c=>c[0]==='erase' && c[1]===713 && c.at(-1)===.55));
-    assert.ok(!h.calls.some(c=>c[0]==='erase' && c[1]===698),'no full side rectangle');
+    const erasures=h.calls.filter(c=>c[0]==='erase');
+    assert.ok(erasures.some(c=>c[1]===33 && c[2]===438),'chart is protected');
+    assert.ok(erasures.every(c=>c[2]>=438 || c[2]<20),'reading details do not erase sprites');
   }
   assert.ok(previous>500,'test exercised the outbound walk');
 });
@@ -129,6 +130,18 @@ test('low, stale, missing and night suppress scenes; turning off stops drawing',
   for(let t=0;t<160000;t+=1000)h.step(t);
   assert.equal(h.canvas.dataset.millieFrame,'15');assert.equal(h.canvas.dataset.winstonFrame,'15');
   assert.equal(h.canvas.dataset.scene,undefined);
+});
+test('both Christmas animals draw fully opaque in every reading state and at night',async()=>{
+  for(const [query,reading] of [
+    ['',healthy],['',{...healthy,v:65}],['',{...healthy,stale:true}],['',null],['?night',healthy]
+  ]){
+    const h=harness(query);
+    h.api.reading(reading);
+    await h.api.setEnabled(true);
+    h.step(100);
+    const spriteDraws=h.calls.filter(c=>typeof c[0]==='object');
+    assert.deepEqual(spriteDraws.map(call=>call.at(-1)),[1,1]);
+  }
 });
 test('normal scenes are spaced about a minute apart and do not repeat recent picks',async()=>{
   const h=harness();h.api.reading(healthy);await h.api.setEnabled(true);

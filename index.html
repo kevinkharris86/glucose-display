@@ -59,6 +59,8 @@ body.simple #fx{display:none}
 #fx-sky,#fx-amb,#fx-decor,#fx-stage{position:absolute;inset:0}
 #fx-decor{opacity:.85}
 body:not(.simple) #bg,body:not(.simple) #side,body:not(.simple) header{text-shadow:0 0 1.6vh var(--bg),0 0 .6vh var(--bg),0 0 .3vh var(--bg)}
+body:not(.simple) #fx[data-theme="christmas"] ~ #app #side{text-shadow:0 0 2px var(--bg),0 0 4px var(--bg),0 1px 4px var(--bg),0 0 8px var(--bg)}
+body:not(.simple) #fx[data-theme="christmas"] ~ #app #arrow{filter:drop-shadow(0 0 3px var(--bg))}
 .ch{position:absolute;left:0;bottom:var(--floor);width:0;height:0;will-change:transform}
 .ch-y{position:absolute;left:0;bottom:0;width:0;height:0}
 .ch-f{position:absolute;bottom:0;transform-origin:50% 100%}
@@ -192,7 +194,7 @@ body:not(.simple) #bg,body:not(.simple) #side,body:not(.simple) header{text-shad
 </div>
 
 <script src="sprites.js"></script>
-<script src="christmas.js?v=20261122"></script>
+<script src="christmas.js?v=20261122-opacity"></script>
 <script>
 "use strict";
 const APP_ID = "d89443d2-327c-4a6f-89e5-496bbb0317db";
@@ -1042,6 +1044,7 @@ const FX = (() => {
   /* ---------- theme + lifecycle ---------- */
   function applyTheme(t) {
     theme = t; sky.style.background = t.sky || "none"; decor.innerHTML = t.decor ? t.decor() : "";
+    fx.dataset.theme = t.id;
     const illustratedChristmas = t.id === "christmas" && !!window.GD_CHRISTMAS;
     stage.style.display = illustratedChristmas ? "none" : "";
     if (window.GD_CHRISTMAS) window.GD_CHRISTMAS.setEnabled(on && illustratedChristmas);

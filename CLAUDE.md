@@ -23,7 +23,7 @@ A small web app (`index.html` + `sprites.js`) that displays real-time Dexcom CGM
 ## FX system (Millie the golden retriever & Winston the Holland Lop)
 Seasonal decoration is the `FX` module near the bottom of `index.html`. Christmas animals use `christmas.js` and the illustrated sheets in `assets/christmas/`.
 
-**Safety rule: the original decoration and Christmas canvas stay behind `#app`.** The Christmas canvas has `pointer-events:none` and erases its pixels over supporting information, header, graph, and controls. The original number paints above the animals, allowing natural overlap at its corners without covering its strokes. FX code never changes polling, chart rendering, or the measurement layout. When a reading is low, stale or missing the characters go quiet; 9 pm–6:30 am they sleep and the layer dims. Keep it that way.
+**Safety rule: the original decoration and Christmas canvas stay behind `#app`.** The Christmas canvas has `pointer-events:none` and protects the header, graph, and controls with masks. Reading details paint above the animals with a contrast shadow. Low, stale, or missing readings keep the characters at rest, and from 9 pm to 6:30 am they use sleeping poses. These states preserve full Christmas sprite opacity. FX code never changes polling, chart rendering, or the measurement layout.
 
 ### Illustrated Christmas pack (approved November 2026)
 - Replaces the photo animals **only** for the Christmas theme; other seasons retain the existing characters.
