@@ -6,6 +6,7 @@ window.GD_CHRISTMAS = (() => {
   const Q = new URLSearchParams(location.search);
   const fast = Q.has('fast') ? .12 : 1;
   const demoScene = Q.has('demo') && Q.has('xscene');
+  const sleeping = Q.has('demo') && Q.has('night');
   const WALK = [0,1,2,3,4,5,6,7];
   const WALK_FINE = Array.from({length:16},(_,i)=>i);
   const DANCE = 'babydoll-dance';
@@ -42,18 +43,12 @@ window.GD_CHRISTMAS = (() => {
   let canvas, ctx, enabled = false, ready = false, raf = 0, lastDraw = 0;
   let width = 0, height = 0, floor = 0, sizes = [], protectedRects = [];
   let homePositions = [.105,.90];
-  let state = 'none', sleeping = false, scene = null, nextScene = 0;
+  let state = 'none', scene = null, nextScene = 0;
   let recent = [], readingUntil = 0, lastMode = '', generation = 0;
   let scenesUntilDance = 2 + Math.floor(Math.random()*3);
   const rnd = (a,b) => a + Math.random() * (b-a);
   const firstSceneDelay = () => demoScene ? 400 : rnd(8000,15000)*fast;
   const homes = () => homePositions;
-  const night = () => {
-    if (Q.has('night')) return true;
-    if (demoScene) return false;
-    const d = new Date(), m = d.getHours()*60 + d.getMinutes();
-    return m >= 21*60 || m < 6*60+30;
-  };
   const box = (id,pad = 0) => {
     const el = document.getElementById(id);
     if (!el) return null;
@@ -324,7 +319,6 @@ window.GD_CHRISTMAS = (() => {
   function loop(now) {
     raf=0;
     if (!enabled || document.hidden || !ready) return;
-    sleeping=night();
     const mode=sleeping?'night':state;
     if (lastMode!==mode) {
       lastMode=mode; scene=null; nextScene=now+firstSceneDelay();

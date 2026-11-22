@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const vm=require('node:vm');
 const path=require('node:path');
 const source=fs.readFileSync(path.join(__dirname,'../christmas.js'),'utf8');
-function harness(query='',missingDance=false) {
+function harness(query='',missingDance=false,hour=12) {
   let now=0, callback, handle=0, calls=[], created=[], translations=[], scales=[];
   const rectangles={bg:[260,100,410,240],side:[710,170,180,170],age:[715,305,100,28],chartwrap:[35,440,954,160],clock:[880,20,110,40],status:[35,20,160,30],controls:[550,540,440,45]};
   const context={globalAlpha:1,setTransform(){},clearRect(){},save(){},restore(){},
@@ -21,8 +21,8 @@ function harness(query='',missingDance=false) {
     constructor(){this.complete=true;this.naturalWidth=1536;this.naturalHeight=1536;}
     set src(value){if(missingDance && value.includes('-dance'))this.naturalWidth=0;}
   }
-  class Day extends Date {getHours(){return 12;}getMinutes(){return 0;}}
-  const scope={window:{addEventListener(){}},document,Image,Date:Day,URL,URLSearchParams,
+  class Clock extends Date {getHours(){return hour;}getMinutes(){return 0;}}
+  const scope={window:{addEventListener(){}},document,Image,Date:Clock,URL,URLSearchParams,
     location:{search:query},innerWidth:1024,innerHeight:600,devicePixelRatio:1,
     Math:Object.assign(Object.create(Math),{random:()=>.5}),performance:{now:()=>now},
     requestAnimationFrame(fn){callback=fn;return ++handle;},cancelAnimationFrame(){callback=null;}};
@@ -133,7 +133,7 @@ test('missing dance artwork leaves every original vignette and animal working',a
   }
   assert.equal(h.canvas.style.display,'block');
 });
-test('low, stale, missing and night suppress scenes; turning off stops drawing',async()=>{
+test('low, stale, missing and the sleep demo suppress scenes; turning off stops drawing',async()=>{
   for(const reading of [null,{...healthy,v:60},{...healthy,stale:true}]) {
     const h=harness('?fast'); h.api.reading(reading); await h.api.setEnabled(true);
     for(let t=0;t<160000;t+=1000)h.step(t);
@@ -141,14 +141,25 @@ test('low, stale, missing and night suppress scenes; turning off stops drawing',
     assert.equal(h.canvas.dataset.millieFrame,'14');
     await h.api.setEnabled(false); assert.equal(h.running,false); assert.equal(h.canvas.style.display,'none');
   }
-  const h=harness('?night&fast');h.api.reading(healthy);await h.api.setEnabled(true);
+  const h=harness('?demo&night&fast');h.api.reading(healthy);await h.api.setEnabled(true);
   for(let t=0;t<160000;t+=1000)h.step(t);
   assert.equal(h.canvas.dataset.millieFrame,'15');assert.equal(h.canvas.dataset.winstonFrame,'15');
   assert.equal(h.canvas.dataset.scene,undefined);
 });
+test('the regular display starts a full scene after bedtime and before dawn',async()=>{
+  for(const [query,hour] of [['',21],['',2],['?night',23]]){
+    const h=harness(query,false,hour);
+    h.api.reading(healthy);await h.api.setEnabled(true);
+    h.step(300);
+    assert.equal(h.canvas.dataset.millieFrame,'14');
+    assert.equal(h.canvas.dataset.winstonFrame,'8');
+    for(let t=400;t<=15000;t+=100)h.step(t);
+    assert.ok(h.api.sceneNames.includes(h.canvas.dataset.scene));
+  }
+});
 test('both Christmas animals draw fully opaque in every reading state and at night',async()=>{
   for(const [query,reading] of [
-    ['',healthy],['',{...healthy,v:65}],['',{...healthy,stale:true}],['',null],['?night',healthy]
+    ['',healthy],['',{...healthy,v:65}],['',{...healthy,stale:true}],['',null],['?demo&night',healthy]
   ]){
     const h=harness(query);
     h.api.reading(reading);
@@ -159,7 +170,7 @@ test('both Christmas animals draw fully opaque in every reading state and at nig
   }
 });
 test('both animals breathe gently at rest even when full scenes are paused',async()=>{
-  for(const [query,reading] of [['',null],['',{...healthy,v:65}],['?night',healthy]]){
+  for(const [query,reading] of [['',null],['',{...healthy,v:65}],['?demo&night',healthy]]){
     const h=harness(query);
     h.api.reading(reading);await h.api.setEnabled(true);
     const stretch=[new Set(),new Set()];
