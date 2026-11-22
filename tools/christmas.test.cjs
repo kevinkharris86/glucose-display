@@ -8,6 +8,7 @@ function harness(query='',missingDance=false) {
   let now=0, callback, handle=0, calls=[], created=[], translations=[], scales=[];
   const rectangles={bg:[260,100,410,240],side:[710,170,180,170],age:[715,305,100,28],chartwrap:[35,440,954,160],clock:[880,20,110,40],status:[35,20,160,30],controls:[550,540,440,45]};
   const context={globalAlpha:1,setTransform(){},clearRect(){},save(){},restore(){},
+    beginPath(){},arc(...args){calls.push(['prop',...args]);},fill(){},
     translate(...p){translations.push(p);},scale(...p){scales.push(p);},
     drawImage(...args){calls.push([...args,this.globalAlpha]);},fillRect(...args){calls.push(['erase',...args,this.globalAlpha]);}};
   const canvas={style:{},dataset:{},setAttribute(){},getContext(){return context;}};
@@ -31,9 +32,9 @@ function harness(query='',missingDance=false) {
     clearCalls(){calls.length=0;},get running(){return !!callback;}};
 }
 const healthy={v:123,low:70,stale:false,fresh:true};
-test('all seventeen vignettes animate, including the sixteen-frame walk',async()=>{
+test('each authored scene animates, including the sixteen-frame walk',async()=>{
   const names=harness().api.sceneNames;
-  assert.equal(names.length,17);
+  assert.equal(names.length,8);
   for(const name of names) {
     const h=harness('?fast&xscene='+name); h.api.reading(healthy); await h.api.setEnabled(true);
     const seen=[new Set(),new Set()];
@@ -43,19 +44,20 @@ test('all seventeen vignettes animate, including the sixteen-frame walk',async()
       if(d.millieFrame!==undefined)seen[0].add(+d.millieFrame);
       if(d.winstonFrame!==undefined)seen[1].add(+d.winstonFrame);
     }
-    assert.ok(seen[0].size>1 || seen[1].size>1,name+' must use different drawings');
+    assert.ok(seen.every(frames=>frames.size>=4),name+' gives both animals distinct actions');
     if(name==='crossing-paths') {
       for(let i=0;i<16;i++)assert.ok(seen[0].has(i),'missing walk frame '+i);
       for(let i=0;i<8;i++)assert.ok(seen[1].has(i),'missing hop frame '+i);
     }
     assert.deepEqual(h.created,['canvas']);
     assert.ok(h.calls.some(c=>c[0]==='erase'&&c[1]===33&&c[2]===438),'graph must be erased from overlay');
+    if(name.startsWith('snow'))assert.ok(h.calls.some(c=>c[0]==='prop'),'snow interaction needs a prop');
   }
 });
 test('a walking dog advances continuously and masks stay outside the reading details',async()=>{
   const h=harness('?fast&xscene=crossing-paths'); h.api.reading(healthy); await h.api.setEnabled(true);
   let previous=-Infinity;
-  for(let t=0;t<20000;t+=40){
+  for(let t=0;t<7500;t+=40){
     h.clearCalls();h.step(t);
     if(h.canvas.dataset.millieSheet!=='walk')continue;
     const x=h.translations.at(-2)[0];
@@ -66,7 +68,7 @@ test('a walking dog advances continuously and masks stay outside the reading det
     assert.ok(erasures.some(c=>c[1]===33 && c[2]===438),'chart is protected');
     assert.ok(erasures.every(c=>c[2]>=438 || c[2]<20),'reading details do not erase sprites');
   }
-  assert.ok(previous>500,'test exercised the outbound walk');
+  assert.ok(previous>390,'test exercised the outbound walk');
 });
 test('number pulses and changing digit widths cannot resize any sprite pack',async()=>{
   const h=harness('?fast&xscene=babydoll-dance');h.api.reading(healthy);await h.api.setEnabled(true);
@@ -80,10 +82,10 @@ test('number pulses and changing digit widths cannot resize any sprite pack',asy
   assert.equal(widths[0].size,1);assert.equal(widths[1].size,1);
 });
 test('rabbit pushes off in discrete fast hops and rests on the ground between hops',async()=>{
-  const h=harness('?fast&xscene=winston-short-hop');h.api.reading(healthy);await h.api.setEnabled(true);
+  const h=harness('?fast&xscene=rabbit-lookout');h.api.reading(healthy);await h.api.setEnabled(true);
   let start=0;
-  while(h.canvas.dataset.scene!=='winston-short-hop' && start<15000){start+=40;h.step(start);}
-  assert.equal(h.canvas.dataset.scene,'winston-short-hop');
+  while(h.canvas.dataset.scene!=='rabbit-lookout' && start<15000){start+=40;h.step(start);}
+  assert.equal(h.canvas.dataset.scene,'rabbit-lookout');
   const samples=[];
   samples.push(h.translations.at(-1));
   for(let t=start+40;t<=start+520;t+=40){h.step(t);samples.push(h.translations.at(-1));}
@@ -92,30 +94,39 @@ test('rabbit pushes off in discrete fast hops and rests on the ground between ho
   assert.ok(Math.abs(samples.at(-1)[1]-samples[0][1])<.01);
   assert.ok(samples.at(-1)[0]<samples[0][0]);
 });
-test('both animals dance in sync for exactly ten seconds, with separate rise and settle',async()=>{
-  const h=harness('?fast&xscene=babydoll-dance');h.api.reading(healthy);await h.api.setEnabled(true);
-  let start=null,firstDance=null,lastDance=null;const frames=new Set();
-  for(let t=0;t<21000;t+=100) {
+test('dance preview starts promptly and the animals travel, hop, and dance on different cues',async()=>{
+  const h=harness('?demo&fast&xscene=babydoll-dance');h.api.reading(healthy);await h.api.setEnabled(true);
+  const first=[null,null],last=[0,0],frames=[new Set(),new Set()],x=[new Set(),new Set()];
+  let different=0, duet=0;
+  for(let t=0;t<15000;t+=40) {
     h.step(t);const d=h.canvas.dataset;
-    if(d.scene==='babydoll-dance' && start===null)start=t;
     if(d.scene!=='babydoll-dance')continue;
-    assert.equal(d.millieSheet,d.winstonSheet);
-    if(d.millieSheet==='dance') {
-      assert.equal(d.millieFrame,d.winstonFrame);
-      frames.add(+d.millieFrame);
-      if(firstDance===null)firstDance=t;lastDance=t;
+    if(d.millieSheet==='dance' && d.winstonSheet==='dance'){
+      duet++;
+      if(d.millieFrame!==d.winstonFrame)different++;
+    }
+    for(const [i,name] of ['millie','winston'].entries()){
+      if(d[name+'Sheet']!=='dance')continue;
+      first[i]??=t;
+      last[i]=t;
+      frames[i].add(+d[name+'Frame']);
+      x[i].add(Math.round(h.translations.at(i-2)[0]));
     }
   }
-  assert.equal(firstDance-start,800);
-  assert.equal(lastDance-firstDance+100,10000);
-  assert.equal(frames.size,16);
+  assert.ok(first[0]<=1200,'proof link gets to Millie’s first dance step promptly');
+  assert.ok(first[1]-first[0]>1500,'Winston has a later entrance');
+  assert.equal(last[0]-first[0]+40,10000);
+  assert.ok(last[1]>last[0],'Winston finishes separately');
+  assert.ok(frames.every(set=>set.size>=14));
+  assert.ok(x.every(set=>set.size>=20),'both dancers travel beyond their idle marks');
+  assert.ok(duet>100 && different/duet>.85,'overlapping dance beats rarely share a frame index');
 });
 test('missing dance artwork leaves every original vignette and animal working',async()=>{
   const h=harness('?fast&xscene=babydoll-dance',true);h.api.reading(healthy);await h.api.setEnabled(true);
   for(let t=0;t<160000;t+=100) {
     h.step(t);assert.notEqual(h.canvas.dataset.scene,'babydoll-dance');
     if(t>0) {
-      assert.ok(['original','walk'].includes(h.canvas.dataset.millieSheet));
+      assert.ok(['original','walk','acting'].includes(h.canvas.dataset.millieSheet));
       assert.notEqual(h.canvas.dataset.winstonSheet,'dance');
       assert.notEqual(h.canvas.dataset.winstonSheet,'rise');
     }

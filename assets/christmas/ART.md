@@ -1,5 +1,7 @@
 # Christmas animal artwork
 
+The current duet uses built-in ImageGen artwork based on the approved likeness reference. `millie-dance-v3.png` has 16 upright steps, broad forepaw sweeps, planted turns, kicks and dips. `winston-dance-v3.png` has 16 separate cross-steps, one-foot balances, star jumps, points and a bow. `millie-acting.png` has 16 sniff, paw push, play bow, reach, sneeze and greeting poses. Each prompt called for a clean transparent 4×4 sheet, natural animal paws and proportions, the matching hat or scarf, consistent character scale and a grounded baseline. Scene timings and travel are authored separately for each animal in `christmas.js`.
+
 Generated with the built-in image generation tool from the user-approved, less exaggerated illustration of Millie and Winston, based on their photographs. The generated sprite drawings are new illustrations, not photo cutouts. Both finished sheets are 1536×1536 transparent PNGs containing 4×4 frames of 384×384 pixels.
 
 ## Generation prompt specification

@@ -17,6 +17,8 @@ window.GD_CHRISTMAS = (() => {
   const assets = images(['millie','winston']);
   const danceAssets = images(['millie-dance-v2','winston-dance-v2']);
   const riseAssets = images(['millie-dance','winston-dance']);
+  const duetAssets = images(['millie-dance-v3','winston-dance-v3']);
+  const actingAssets = images(['millie-acting']);
   const rabbitBehaviors = images(['winston-behaviors']);
   const extras = images(['millie-walk-v3','winston-play']);
   const waitForImages = list => Promise.all(list.map(image => new Promise(resolve => {
@@ -25,8 +27,14 @@ window.GD_CHRISTMAS = (() => {
     image.onerror = () => resolve(false);
   })));
   const loaded = waitForImages(assets);
-  let danceReady = false;
-  waitForImages([...danceAssets,...riseAssets]).then(results => { danceReady = results.every(Boolean); });
+  let danceReady = false, duetReady = false, dancePending = true, actingReady = false;
+  Promise.all([waitForImages(riseAssets),waitForImages(duetAssets),waitForImages(danceAssets)])
+    .then(([rise,duet,fallback])=>{
+      duetReady=duet.every(Boolean);
+      danceReady=rise.every(Boolean) && (duetReady || fallback.every(Boolean));
+      dancePending=false;
+    });
+  waitForImages(actingAssets).then(([acting]) => { actingReady = acting; });
   let behaviorReady=false;
   waitForImages(rabbitBehaviors).then(results=>{behaviorReady=results.every(Boolean);});
   let walkReady=false, playReady=false;
@@ -38,7 +46,7 @@ window.GD_CHRISTMAS = (() => {
   let recent = [], readingUntil = 0, lastMode = '', generation = 0;
   let scenesUntilDance = 2 + Math.floor(Math.random()*3);
   const rnd = (a,b) => a + Math.random() * (b-a);
-  const firstSceneDelay = () => rnd(8000,15000)*fast;
+  const firstSceneDelay = () => demoScene ? 400 : rnd(8000,15000)*fast;
   const homes = () => homePositions;
   const night = () => {
     if (Q.has('night')) return true;
@@ -87,13 +95,22 @@ window.GD_CHRISTMAS = (() => {
         segments.push({t,d:ms,x0:x,x1:x,dir,frames:Array.isArray(frames)?frames:[frames],fps,sheet});
         t += ms; return api;
       },
+      dance(frames,ms,to,lift=0) {
+        const edge=sizes[who]*.45/width;
+        to=Math.max(edge,Math.min(1-edge,to));
+        segments.push({t,d:ms,x0:x,x1:to,dir,frames,fps:frames.length*1000/ms,sheet:duetReady?6:1,lift});
+        t+=ms; x=to; return api;
+      },
+      act(frames,ms,fallback) {
+        return api.hold(actingReady?frames:fallback,ms,frames.length*1000/ms,actingReady?7:0);
+      },
       face(d) { dir = d; return api; },
-      go(to) {
+      go(to,pace=1) {
         const edge=sizes[who]*.45/width;
         to=Math.max(edge,Math.min(1-edge,to));
         if (Math.abs(to-x)*width<1) return api;
         const hops=Math.max(1,Math.ceil(Math.abs(to-x)*width/(sizes[who]*.75)));
-        const duration = who?hops*520:Math.max(350,Math.abs(to-x)*34000);
+        const duration = who?hops*520:Math.max(350,Math.abs(to-x)*34000/pace);
         const nextDirection = to>x ? 1 : -1;
         if (!who && dir!==nextDirection) {
           api.hold(12,180);
@@ -101,7 +118,7 @@ window.GD_CHRISTMAS = (() => {
         dir = to>x ? 1 : -1;
         const fineWalk = !who && walkReady;
         segments.push({t,d:duration,x0:x,x1:to,dir,frames:fineWalk?WALK_FINE:WALK,
-          fps:who?1000/65:fineWalk?20:10,hop:!!who,hops,sheet:fineWalk?4:0});
+          fps:who?1000/65:(fineWalk?20:10)*pace,hop:!!who,hops,sheet:fineWalk?4:0});
         t += duration; x = to; return api;
       },
       home() { api.go(homes()[who]); dir = who?-1:1; return api; },
@@ -109,41 +126,64 @@ window.GD_CHRISTMAS = (() => {
     };
     return api;
   }
-  // Quiet, different vignettes. Never repeat a scene within the last six picks.
+  // Each scene gives the animals separate cues and a distinct interaction.
   const SCENES = [
-    ['millie-stroll',(m,w) => { m.hold(8,500).go(.29).hold([8,10,10,8],2400).home(); w.hold([8,11,8],4500,2); }],
-    ['winston-explores',(m,w) => { w.go(.68).hold([8,10,10,8],2600).home(); m.hold([14,14,12,14],6500,1); }],
-    ['christmas-greeting',(m,w) => { m.hold(8,400).go(.35).face(1).hold([8,12,8],5000,2).home(); w.go(.55).face(-1).hold([8,11,8],9000,2).home(); }],
-    ['graph-watch',(m,w) => { m.hold(8,300).go(.25).hold([8,10,8,11,8],3800,2).home(); w.hold(8,2000).go(.75).hold([10,8,11,8],3000,2).home(); }],
-    ['follow-millie',(m,w) => { m.hold(8,300).go(.43).hold([8,13,8],2800,2).home(); w.hold(8,1300).go(.58).face(-1).hold([8,12,8],8500,2).home(); }],
-    ['snowflake-listening',(m,w) => { m.hold([8,11,8,12,8,9,8],6500,2).hold(14,1200); w.hold([8,11,8,13,8,9,8],6800,2); }],
-    ['sniff-the-present',(m,w) => { m.hold(8,300).go(.065).hold([8,10,10,8,10,8],4400,2).home(); w.hold([8,12,8],6000,1); }],
-    ['tree-inspection',(m,w) => { w.go(.94).hold([8,11,11,8,13,8],4300,2).home(); m.hold([14,12,14,9,14],6000,1); }],
-    ['gentle-check-in',(m,w) => { m.hold([14,12,14,8,11,8,14],6500,1).hold(14,1500); w.hold([8,12,8,11,8,9,8],6500,1); }],
-    ['winston-short-hop',(m,w) => { w.go(.81).hold([8,13,8],2100,2).go(.70).hold([8,10,8],2300,2).home(); m.hold([14,12,14],8000,1); }],
-    ['settling-down',(m,w) => { m.hold([8,10,8,14,14,15,14],7000,1); w.hold([8,10,8,14,15,14,8],7000,1); }],
-    ['crossing-paths',(m,w) => { m.hold(8,400).go(.64).hold([8,13,8],2200,2).home(); w.hold(8,1800).go(.38).hold([8,12,8],2300,2).home(); }],
+    ['snowball-takeover',(m,w) => {
+      m.go(.23,1.35).face(1).act([0,1,1,2],850,[8,10,10,8]);
+      const push = m.duration;
+      m.act([3,2,0],650,[10,8,8]).act([8,12,0],1850,[11,12,8]).home();
+      w.hold(8,push+900).go(.93).face(-1).hold([13,10,8],1000,3).home();
+      return {kind:'ball',start:push-500,roll:push,duration:3100};
+    }],
+    ['snowflake-sneeze',(m,w) => {
+      m.act([0,8,8,9,9],2150,[8,11,11,11,11])
+        .act([10,10,11,12,0],1250,[10,9,8,12,8]);
+      w.hold(8,2150).go(.83).face(1).hold([13,12,8],1100,3).home();
+      return {kind:'flake',start:0,duration:2600};
+    }],
+    ['crossing-paths',(m,w) => {
+      m.go(.43,1.45).act([0,12,14],1500,[8,12,11]).home();
+      w.hold(8,1400).go(.53).face(-1).hold([13,10,8],1600,2).home();
+    }],
     ['rabbit-lookout',(m,w)=>{
-      w.face(-1).hold([0,1,2,3],700,1000/175,2).hold([4,5,6,7,6,5],3500,3,2).hold([3,2,1,0],700,1000/175,2);
-      m.face(1).hold([8,12,8,11,8],4900,2);
+      w.go(.84).face(-1).hold([0,1,2,3],800,5,2).hold([4,4,5,6,6,7,5],2800,2.5,2)
+        .hold([3,2,1,0],700,1000/175,2).home();
+      m.hold(14,1250).go(.23).face(1).act([8,9,12,0],1800,[11,11,12,8]).home();
     }],
     ['rabbit-face-wash',(m,w)=>{
-      w.face(1).hold([15,8,9,10,11,12,13,10,11,12,13,14,15],5200,2.5,2);
-      m.face(1).hold([14,14,15,14],5200,1);
+      w.hold(8,450).face(-1).hold([15,8,9,10,11,9,10,12,13,14,15],2750,4,2)
+        .hold(8,1050).go(.84).home();
+      m.hold(14,1900).act([0,12,12,13,14,0],2100,[8,12,12,11,12,8]).home();
     }],
     ['playful-follow',(m,w)=>{
-      m.go(.38).face(1).hold([8,10,8,12],2600,2).home();
-      w.hold(8,800).go(.62).face(-1).hold(8,4500).hold([0,1,2,3,4,6,4,3,2,1,0],2600,4,2).home();
+      w.go(.55).face(1).hold([0,1,2,3,4,5,7,3,2,1,0],2200,5,2)
+        .go(.76).face(-1).hold(13,650).home();
+      m.hold(14,1150).go(.38,1.5).face(1).act([4,5,6,7],1100,[10,10,11,8])
+        .go(.45,1.5).home();
     }],
     ['binky-and-bow',(m,w) => {
-      w.face(-1).go(.85).hold(WALK,520,1000/65,5).hold([8,9,10,11,12,13,14,15],1800,1000/225,5).home();
-      m.face(1).hold(14,850).hold([8,10,10,12,8],2400,2.5).hold(14,1600);
+      w.go(.84).hold(WALK,520,1000/65,5).hold(8,1050,6,5)
+        .hold([9,10,11,12,13,14,15],1750,4,5).home();
+      m.hold(14,1300).face(1).act([0,4,5,5,6,7,0],2100,[8,10,10,10,11,8,8]).home();
     }],
     [DANCE,(m,w) => {
-      for (const dancer of [m,w]) dancer.face(1)
-        .hold([0,1,2,3],800,5,3)
-        .hold(Array.from({length:16},(_,i)=>i),10000,12,1)
+      const [left,right]=homes();
+      // Millie starts the two-step. Winston watches, then makes his own entrance.
+      m.face(1).hold([0,1,2,3],700,1000/175,3)
+        .dance([0,1,2,2,3,0],1600,left+.05)
+        .dance([3,4,5,5,6,7],1600,left)
+        .dance([8,8,9,10,10,11],1700,left+.03,.07)
+        .dance([12,13,14,14,15],1450,left+.045,.08)
+        .dance([4,5,6,7,10,11],1750,left)
+        .dance([0,1,2,3,13,14,15],1900,left,.06)
         .hold([3,2,1,0],800,5,3);
+      w.face(-1).hold([8,12,13,8],1700,1000/425).hold([0,1,2,3],950,1000/237.5,3)
+        .dance([0,1,2,3,4,5,6],1750,right-.06,.13)
+        .dance([6,7,8,9,10,11],1600,right-.025)
+        .dance([4,5,6,7,12,13,14],1750,right,.14)
+        .dance([12,13,14,5,6,15],1550,right-.035,.12)
+        .dance([10,11,12,9,12,15,15],2050,right)
+        .hold([3,2,1,0],1150,1000/287.5,3);
     }]
   ];
   function startScene(now) {
@@ -151,16 +191,20 @@ window.GD_CHRISTMAS = (() => {
     const available = SCENES.filter(s => (s[0] !== DANCE || danceReady) &&
       (s[0] !== 'binky-and-bow' || playReady) &&
       (!['rabbit-lookout','rabbit-face-wash','playful-follow'].includes(s[0]) || behaviorReady));
-    const choices = available.filter(s => s[0]!==DANCE && !recent.includes(s[0]));
+    if (demoScene && forced===DANCE && dancePending) return;
+    const regular = available.filter(s=>s[0]!==DANCE);
+    const choices = regular.filter(s=>!recent.includes(s[0]));
+    const pool = choices.length ? choices : regular.filter(s=>s[0]!==recent.at(-1));
     const selected = available.find(s => s[0] === forced) ||
       (danceReady && scenesUntilDance<=0 && !recent.includes(DANCE)
         ? available.find(s=>s[0]===DANCE)
-        : choices[Math.floor(Math.random()*choices.length)]);
+        : pool[Math.floor(Math.random()*pool.length)]);
     if (selected[0]===DANCE) scenesUntilDance=6+Math.floor(Math.random()*3);
     else scenesUntilDance--;
-    const m = track(0), w = track(1); selected[1](m,w);
+    const m = track(0), w = track(1);
+    const prop = selected[1](m,w);
     m.face(1).hold(14,500); w.face(-1).hold(8,500);
-    scene = {name:selected[0],start:now,tracks:[m.segments,w.segments],duration:Math.max(m.duration,w.duration)};
+    scene = {name:selected[0],start:now,tracks:[m.segments,w.segments],duration:Math.max(m.duration,w.duration),prop};
     canvas.dataset.scene = selected[0];
     recent.push(selected[0]); if (recent.length>6) recent.shift();
     nextScene = now+Math.max(scene.duration+10000,rnd(55000,85000)*fast);
@@ -180,21 +224,24 @@ window.GD_CHRISTMAS = (() => {
         const age = elapsed-seg.t, index = Math.floor(age*seg.fps/1000)%seg.frames.length;
         const phase=(age%520)/520, air=Math.max(0,Math.min(1,(phase-.13)/.65));
         const stride=air*air*(3-2*air);
-        const progress=seg.hop?(Math.floor(age/520)+stride)/seg.hops:Math.min(1,age/seg.d);
+        const u=Math.min(1,age/seg.d);
+        const progress=seg.hop?(Math.floor(age/520)+stride)/seg.hops:seg.lift!==undefined?u*u*(3-2*u):u;
         return {x:seg.x0+(seg.x1-seg.x0)*progress,dir:seg.dir,
           frame:seg.frames[index],sheet:seg.sheet||0,
           hop:seg.hop ? Math.sin(air*Math.PI)*sizes[who]*.23 :
             seg.sheet===5 && seg.frames.length===8 && seg.frames[0]===0
-              ? Math.sin(air*Math.PI)*sizes[who]*.28 : 0};
+              ? Math.sin(air*Math.PI)*sizes[who]*.28 :
+                (seg.lift||0)*Math.sin(u*Math.PI)*sizes[who]};
       }
     }
     if (who && (readingUntil>now || (now+2500)%12000<850)) base.frame = 11;
     else if ((now+who*3100)%9200<220) base.frame = who?9:15;
     return base;
   }
-  const sheetNames=['original','dance','behavior','rise','walk','play'];
+  const sheetNames=['original','dance','behavior','rise','walk','play','dance','acting'];
   function paint(who,s) {
-    const image=[assets[who],danceAssets[who],rabbitBehaviors[0],riseAssets[who],extras[0],extras[1]][s.sheet||0];
+    const image=[assets[who],danceAssets[who],rabbitBehaviors[0],riseAssets[who],extras[0],extras[1],
+      duetAssets[who],actingAssets[0]][s.sheet||0];
     const size=sizes[who],tileW=image.naturalWidth/4,tileH=image.naturalHeight/4;
     ctx.save();
     try {
@@ -205,6 +252,35 @@ window.GD_CHRISTMAS = (() => {
     } finally {
       ctx.restore();
     }
+  }
+  function paintProp(now) {
+    const prop=scene?.prop;
+    if(!prop)return;
+    const elapsed=now-scene.start;
+    if(elapsed<prop.start || elapsed>prop.start+prop.duration)return;
+    const u=(elapsed-prop.start)/prop.duration;
+    let x,y,radius;
+    if(prop.kind==='ball'){
+      const rolled=Math.max(0,Math.min(1,(elapsed-prop.roll)/2100));
+      x=(.34+.49*(1-(1-rolled)**2))*width;
+      radius=Math.max(4,Math.min(12,height*.017));
+      y=floor-radius-Math.abs(Math.sin(rolled*3*Math.PI))*(1-rolled)*radius;
+    }else{
+      x=(.23+Math.sin(u*2*Math.PI)*.022)*width;
+      y=floor-height*(.47-.27*u);
+      radius=Math.max(2.5,Math.min(5,height*.008));
+    }
+    ctx.save();
+    ctx.globalAlpha=Math.min(1,u*12,(1-u)*10);
+    ctx.beginPath();
+    ctx.arc(x,y,radius,0,2*Math.PI);
+    ctx.fillStyle='#c9ddf2';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(x-radius*.25,y-radius*.26,radius*.52,0,2*Math.PI);
+    ctx.fillStyle='#eef6ff';
+    ctx.fill();
+    ctx.restore();
   }
   function draw(now) {
     ctx.clearRect(0,0,width,height);
@@ -220,6 +296,7 @@ window.GD_CHRISTMAS = (() => {
       canvas.dataset[who?'winstonFrame':'millieFrame']=String(s.frame);
       canvas.dataset[who?'winstonSheet':'millieSheet']=sheetNames[s.sheet||0];
     }
+    paintProp(now);
     // Keep the chart and header clear. Reading details paint above the animals.
     ctx.save();
     ctx.globalCompositeOperation='destination-out';
