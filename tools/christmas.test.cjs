@@ -5,9 +5,10 @@ const vm=require('node:vm');
 const path=require('node:path');
 const source=fs.readFileSync(path.join(__dirname,'../christmas.js'),'utf8');
 function harness(query='',missingDance=false) {
-  let now=0, callback, handle=0, calls=[], created=[], translations=[];
+  let now=0, callback, handle=0, calls=[], created=[], translations=[], scales=[];
   const rectangles={bg:[260,100,410,240],side:[710,170,180,170],age:[715,305,100,28],chartwrap:[35,440,954,160],clock:[880,20,110,40],status:[35,20,160,30],controls:[550,540,440,45]};
-  const context={globalAlpha:1,setTransform(){},clearRect(){},save(){},restore(){},translate(...p){translations.push(p);},scale(){},
+  const context={globalAlpha:1,setTransform(){},clearRect(){},save(){},restore(){},
+    translate(...p){translations.push(p);},scale(...p){scales.push(p);},
     drawImage(...args){calls.push([...args,this.globalAlpha]);},fillRect(...args){calls.push(['erase',...args,this.globalAlpha]);}};
   const canvas={style:{},dataset:{},setAttribute(){},getContext(){return context;}};
   const elements=Object.fromEntries(Object.entries(rectangles).map(([id,[left,top,width,height]])=>[id,{getBoundingClientRect(){return {left,top,width,height};}}]));
@@ -25,7 +26,7 @@ function harness(query='',missingDance=false) {
     Math:Object.assign(Object.create(Math),{random:()=>.5}),performance:{now:()=>now},
     requestAnimationFrame(fn){callback=fn;return ++handle;},cancelAnimationFrame(){callback=null;}};
   vm.runInNewContext(source,scope);
-  return {api:scope.window.GD_CHRISTMAS,canvas,context,calls,created,document,listeners,rectangles,translations,
+  return {api:scope.window.GD_CHRISTMAS,canvas,context,calls,created,document,listeners,rectangles,translations,scales,
     step(t){now=t;const fn=callback;callback=null;if(fn)fn(t);},
     clearCalls(){calls.length=0;},get running(){return !!callback;}};
 }
@@ -80,9 +81,12 @@ test('number pulses and changing digit widths cannot resize any sprite pack',asy
 });
 test('rabbit pushes off in discrete fast hops and rests on the ground between hops',async()=>{
   const h=harness('?fast&xscene=winston-short-hop');h.api.reading(healthy);await h.api.setEnabled(true);
-  for(let t=0;t<7200;t+=40)h.step(t);
+  let start=0;
+  while(h.canvas.dataset.scene!=='winston-short-hop' && start<15000){start+=40;h.step(start);}
+  assert.equal(h.canvas.dataset.scene,'winston-short-hop');
   const samples=[];
-  for(let t=7200;t<=7720;t+=40){h.step(t);samples.push(h.translations.at(-1));}
+  samples.push(h.translations.at(-1));
+  for(let t=start+40;t<=start+520;t+=40){h.step(t);samples.push(h.translations.at(-1));}
   assert.equal(samples[0][0],samples[1][0]);
   assert.ok(Math.max(...samples.map(p=>p[1]))-Math.min(...samples.map(p=>p[1]))>20);
   assert.ok(Math.abs(samples.at(-1)[1]-samples[0][1])<.01);
@@ -143,6 +147,24 @@ test('both Christmas animals draw fully opaque in every reading state and at nig
     assert.deepEqual(spriteDraws.map(call=>call.at(-1)),[1,1]);
   }
 });
+test('both animals breathe gently at rest even when full scenes are paused',async()=>{
+  for(const [query,reading] of [['',null],['',{...healthy,v:65}],['?night',healthy]]){
+    const h=harness(query);
+    h.api.reading(reading);await h.api.setEnabled(true);
+    const stretch=[new Set(),new Set()];
+    for(let t=100;t<=6000;t+=100){
+      h.step(t);
+      const [millie,winston]=h.scales.slice(-2);
+      stretch[0].add(millie[1]);stretch[1].add(winston[1]);
+    }
+    for(const samples of stretch){
+      assert.ok(samples.size>2);
+      assert.ok([...samples].every(n=>n>=1 && n<=1.018));
+    }
+    assert.equal(h.canvas.dataset.scene,undefined);
+    assert.equal(new Set(h.translations.map(p=>p[1])).size,1,'breathing does not move the feet');
+  }
+});
 test('normal scenes are spaced about a minute apart and do not repeat recent picks',async()=>{
   const h=harness();h.api.reading(healthy);await h.api.setEnabled(true);
   const starts=[];let previous;
@@ -151,6 +173,7 @@ test('normal scenes are spaced about a minute apart and do not repeat recent pic
     if(name&&name!=='rest'&&name!==previous) {starts.push({t,name});previous=name;}
   }
   assert.ok(starts.length>=8);
+  assert.ok(starts[0].t>=8000 && starts[0].t<=15000,'first daytime scene starts promptly');
   assert.ok(starts.slice(2,5).some(s=>s.name==='babydoll-dance'),'surprise dance appears early in rotation');
   for(let i=1;i<starts.length;i++) {
     assert.ok(starts[i].t-starts[i-1].t>=55000);

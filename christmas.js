@@ -5,6 +5,7 @@ window.GD_CHRISTMAS = (() => {
   const scriptBase = new URL('.', document.currentScript.src);
   const Q = new URLSearchParams(location.search);
   const fast = Q.has('fast') ? .12 : 1;
+  const demoScene = Q.has('demo') && Q.has('xscene');
   const WALK = [0,1,2,3,4,5,6,7];
   const WALK_FINE = Array.from({length:16},(_,i)=>i);
   const DANCE = 'babydoll-dance';
@@ -37,9 +38,11 @@ window.GD_CHRISTMAS = (() => {
   let recent = [], readingUntil = 0, lastMode = '', generation = 0;
   let scenesUntilDance = 2 + Math.floor(Math.random()*3);
   const rnd = (a,b) => a + Math.random() * (b-a);
+  const firstSceneDelay = () => rnd(8000,15000)*fast;
   const homes = () => homePositions;
   const night = () => {
     if (Q.has('night')) return true;
+    if (demoScene) return false;
     const d = new Date(), m = d.getHours()*60 + d.getMinutes();
     return m >= 21*60 || m < 6*60+30;
   };
@@ -68,7 +71,7 @@ window.GD_CHRISTMAS = (() => {
     document.addEventListener('visibilitychange', () => {
       cancelAnimationFrame(raf); raf = 0;
       if (!document.hidden && enabled && ready) {
-        scene = null; nextScene = performance.now()+rnd(45000,75000)*fast;
+        scene = null; nextScene = performance.now()+firstSceneDelay();
         layout(); loop(performance.now());
       }
     });
@@ -165,8 +168,10 @@ window.GD_CHRISTMAS = (() => {
   function sample(who,now) {
     const home = homes()[who];
     const idleFrame = who ? 8 : 14;
-    const base = {x:home,dir:who?-1:1,frame:idleFrame,hop:0};
-    if (sleeping) { base.frame = who?15:15; return base; }
+    // A small, foot-anchored breath keeps the resting pose alive in quiet modes.
+    const breath = (1-Math.cos(now/(who?4300:5600)*2*Math.PI))/2;
+    const base = {x:home,dir:who?-1:1,frame:idleFrame,hop:0,stretch:1+.018*breath};
+    if (sleeping) { base.frame = 15; return base; }
     if (state !== 'ok') return base;
     if (scene) {
       const elapsed = now-scene.start;
@@ -183,8 +188,8 @@ window.GD_CHRISTMAS = (() => {
               ? Math.sin(air*Math.PI)*sizes[who]*.28 : 0};
       }
     }
-    if (readingUntil>now && who) base.frame = 11;
-    else if ((now+who*3100)%9200<160) base.frame = who?9:15;
+    if (who && (readingUntil>now || (now+2500)%12000<850)) base.frame = 11;
+    else if ((now+who*3100)%9200<220) base.frame = who?9:15;
     return base;
   }
   const sheetNames=['original','dance','behavior','rise','walk','play'];
@@ -193,9 +198,10 @@ window.GD_CHRISTMAS = (() => {
     const size=sizes[who],tileW=image.naturalWidth/4,tileH=image.naturalHeight/4;
     ctx.save();
     try {
-      ctx.translate(s.x*width,floor+size*.10-s.hop);
-      ctx.scale(s.dir,1);
-      ctx.drawImage(image,(s.frame%4)*tileW,Math.floor(s.frame/4)*tileH,tileW,tileH,-size/2,-size,size,size);
+      ctx.translate(s.x*width,floor-s.hop);
+      ctx.scale(s.dir,s.stretch||1);
+      // The sprite's foot baseline is at 90% of its tile.
+      ctx.drawImage(image,(s.frame%4)*tileW,Math.floor(s.frame/4)*tileH,tileW,tileH,-size/2,-size*.9,size,size);
     } finally {
       ctx.restore();
     }
@@ -244,7 +250,7 @@ window.GD_CHRISTMAS = (() => {
     sleeping=night();
     const mode=sleeping?'night':state;
     if (lastMode!==mode) {
-      lastMode=mode; scene=null; nextScene=now+rnd(45000,75000)*fast;
+      lastMode=mode; scene=null; nextScene=now+firstSceneDelay();
     }
     if (!sleeping && state==='ok') {
       if (scene && now-scene.start>scene.duration) { scene=null; canvas.dataset.scene='rest'; }

@@ -194,7 +194,7 @@ body:not(.simple) #fx[data-theme="christmas"] ~ #app #arrow{filter:drop-shadow(0
 </div>
 
 <script src="sprites.js"></script>
-<script src="christmas.js?v=20261122-opacity"></script>
+<script src="christmas.js?v=20261122-motion"></script>
 <script>
 "use strict";
 const APP_ID = "d89443d2-327c-4a6f-89e5-496bbb0317db";
@@ -240,10 +240,12 @@ function parse(list) {
 }
 function demoData() {
   const now = Date.now(), out = [];
+  const params = new URLSearchParams(location.search);
+  const previewChristmasScene = params.get("theme") === "christmas" && params.has("xscene");
   for (let i = 287; i >= 0; i--) {
     const t = now - i * 300000 - 90000;
     const v = Math.round(135 + 55 * Math.sin(t / 5.4e6) + 22 * Math.sin(t / 1.3e6));
-    out.push({ t, v });
+    out.push({ t, v: previewChristmasScene && i === 0 ? Math.max(v, cfg.low + 5) : v });
   }
   out.forEach((p, i) => { const d = i ? p.v - out[i - 1].v : 0;
     p.trend = d > 9 ? "DoubleUp" : d > 5 ? "SingleUp" : d > 2 ? "FortyFiveUp" : d < -9 ? "DoubleDown" : d < -5 ? "SingleDown" : d < -2 ? "FortyFiveDown" : "Flat"; });
