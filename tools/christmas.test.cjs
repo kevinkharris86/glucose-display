@@ -6,8 +6,10 @@ const path=require('node:path');
 const source=fs.readFileSync(path.join(__dirname,'../christmas.js'),'utf8');
 function harness(query='',missingDance=false,hour=12) {
   let now=0, callback, handle=0, calls=[], created=[], translations=[], scales=[];
+  const alphaStack=[];
   const rectangles={bg:[260,100,410,240],side:[710,170,180,170],age:[715,305,100,28],chartwrap:[35,440,954,160],clock:[880,20,110,40],status:[35,20,160,30],controls:[550,540,440,45]};
-  const context={globalAlpha:1,setTransform(){},clearRect(){},save(){},restore(){},
+  const context={globalAlpha:1,setTransform(){},clearRect(){},rotate(){},
+    save(){alphaStack.push(this.globalAlpha);},restore(){this.globalAlpha=alphaStack.pop();},
     beginPath(){},arc(...args){calls.push(['prop',...args]);},fill(){},
     translate(...p){translations.push(p);},scale(...p){scales.push(p);},
     drawImage(...args){calls.push([...args,this.globalAlpha]);},fillRect(...args){calls.push(['erase',...args,this.globalAlpha]);}};
@@ -19,7 +21,7 @@ function harness(query='',missingDance=false,hour=12) {
     getElementById(id){return elements[id];},body:{insertBefore(){}},addEventListener(event,fn){listeners[event]=fn;}};
   class Image {
     constructor(){this.complete=true;this.naturalWidth=1536;this.naturalHeight=1536;}
-    set src(value){if(missingDance && value.includes('-dance'))this.naturalWidth=0;}
+    set src(value){this.url=value;if(missingDance && value.includes('-dance'))this.naturalWidth=0;}
   }
   class Clock extends Date {getHours(){return hour;}getMinutes(){return 0;}}
   const scope={window:{addEventListener(){}},document,Image,Date:Clock,URL,URLSearchParams,
@@ -209,4 +211,58 @@ test('hide/show and rapid toggles do not leave background loops running',async()
   await h.api.setEnabled(true);h.document.hidden=true;h.listeners.visibilitychange();assert.equal(h.running,false);
   h.document.hidden=false;h.listeners.visibilitychange();assert.equal(h.running,true);
   await h.api.setEnabled(false);assert.equal(h.running,false);
+});
+test('all seven Thanksgiving scenes share the Christmas timing and use opaque illustrated sprites',async()=>{
+  const h=harness('',false,23);
+  h.api.reading(healthy);
+  await h.api.setEnabled(true,'thanksgiving');
+  const starts=[], frames=new Map();
+  let previous;
+  for(let t=0;t<540000;t+=40){
+    h.clearCalls();
+    h.step(t);
+    const {scene,millieFrame,winstonFrame}=h.canvas.dataset;
+    const sprites=h.calls.filter(c=>c.length===10 && c[0]?.url);
+    assert.ok(sprites.every(c=>c[0].url.includes('/thanksgiving/') && c.at(-1)===1));
+    if(!scene || scene==='rest')continue;
+    if(scene!==previous){starts.push({t,scene});previous=scene;}
+    if(!frames.has(scene))frames.set(scene,[new Set(),new Set()]);
+    frames.get(scene)[0].add(millieFrame);
+    frames.get(scene)[1].add(winstonFrame);
+  }
+  assert.equal(h.api.thanksgivingSceneNames.length,7);
+  assert.equal(frames.size,7);
+  assert.ok(starts[0].t>=8000 && starts[0].t<=15000);
+  for(let i=1;i<starts.length;i++)assert.ok(starts[i].t-starts[i-1].t>=55000 && starts[i].t-starts[i-1].t<=85000);
+  for(const [name,poses] of frames)assert.ok(poses.every(p=>p.size>=4),name);
+  await h.api.setEnabled(true,'christmas');
+  h.clearCalls();
+  h.step(541000);
+  assert.ok(h.calls.some(c=>c[0]?.url?.includes('/christmas/')));
+  assert.ok(!h.calls.some(c=>c[0]?.url?.includes('/thanksgiving/')));
+});
+test('Winston lands on the pumpkin before returning to the ground and settles next to Millie in the cuddle',async()=>{
+  for(const name of ['pumpkin-perch','harvest-cuddle']){
+    const h=harness('?demo&fast&xscene='+name);
+    h.api.reading(healthy);
+    await h.api.setEnabled(true,'thanksgiving');
+    h.step(40);
+    const ground=h.translations.at(-1)[1];
+    let perched=0, cuddled=0, backOnGround=false;
+    for(let t=80;t<=14000;t+=40){
+      h.clearCalls();
+      h.step(t);
+      const [millie,winston]=h.translations.slice(-2);
+      const {millieFrame,winstonFrame}=h.canvas.dataset;
+      if(name==='pumpkin-perch'){
+        if(Math.abs(winston[0]-1024*.80)<.01 && winston[1]<ground-40 &&
+            h.calls.some(c=>c[0]?.url?.includes('/pumpkin.png')))perched++;
+        if(perched && Math.abs(winston[1]-ground)<.01)backOnGround=true;
+      }else if(Math.abs(millie[0]-winston[0])<115 && millieFrame==='15' && ['14','15'].includes(winstonFrame)){
+        cuddled++;
+      }
+    }
+    if(name==='pumpkin-perch')assert.ok(perched>75 && backOnGround);
+    else assert.ok(cuddled>50);
+  }
 });

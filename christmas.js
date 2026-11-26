@@ -1,4 +1,4 @@
-/* Millie & Winston: illustrated Christmas-only frame animation.
+/* Millie & Winston: illustrated holiday frame animation.
    Decorative overlay; never changes the measurement layout or reads credentials. */
 window.GD_CHRISTMAS = (() => {
   'use strict';
@@ -10,9 +10,10 @@ window.GD_CHRISTMAS = (() => {
   const WALK = [0,1,2,3,4,5,6,7];
   const WALK_FINE = Array.from({length:16},(_,i)=>i);
   const DANCE = 'babydoll-dance';
-  const images = names => names.map(name => {
+  const images = (names,folder='christmas') => names.map(name => {
     const image = new Image();
-    image.src = new URL(`assets/christmas/${name}.png?v=20261122`, scriptBase).href;
+    const revision=folder==='thanksgiving'?'20261126':'20261122';
+    image.src = new URL(`assets/${folder}/${name}.png?v=${revision}`, scriptBase).href;
     return image;
   });
   const assets = images(['millie','winston']);
@@ -28,6 +29,21 @@ window.GD_CHRISTMAS = (() => {
     image.onerror = () => resolve(false);
   })));
   const loaded = waitForImages(assets);
+  let activeTheme='christmas', thanksgivingArt;
+  const harvest = () => activeTheme==='thanksgiving';
+  function loadThanksgiving() {
+    if (!thanksgivingArt) {
+      const [dog,rabbit,pumpkin,leaf]=images(['millie','winston','pumpkin','leaf'],'thanksgiving');
+      thanksgivingArt={sheets:[dog,rabbit],pumpkin,leaf,pumpkinReady:false,leafReady:false,propsPending:true};
+      waitForImages([pumpkin,leaf]).then(([p,l])=>{
+        thanksgivingArt.pumpkinReady=p;
+        thanksgivingArt.leafReady=l;
+        thanksgivingArt.propsPending=false;
+      });
+      thanksgivingArt.loaded=waitForImages(thanksgivingArt.sheets);
+    }
+    return thanksgivingArt.loaded;
+  }
   let danceReady = false, duetReady = false, dancePending = true, actingReady = false;
   Promise.all([waitForImages(riseAssets),waitForImages(duetAssets),waitForImages(danceAssets)])
     .then(([rise,duet,fallback])=>{
@@ -82,12 +98,12 @@ window.GD_CHRISTMAS = (() => {
   }
   // Segments carry their own frame sequences, rather than translating still photos.
   function track(who) {
-    let x = homes()[who], t = 0, dir = who?-1:1;
+    let x = homes()[who], t = 0, dir = who?-1:1, elevation = 0;
     const segments = [];
     const api = {
       segments,
       hold(frames,ms,fps = 6,sheet = 0) {
-        segments.push({t,d:ms,x0:x,x1:x,dir,frames:Array.isArray(frames)?frames:[frames],fps,sheet});
+        segments.push({t,d:ms,x0:x,x1:x,dir,frames:Array.isArray(frames)?frames:[frames],fps,sheet,elevation});
         t += ms; return api;
       },
       dance(frames,ms,to,lift=0) {
@@ -100,6 +116,13 @@ window.GD_CHRISTMAS = (() => {
         return api.hold(actingReady?frames:fallback,ms,frames.length*1000/ms,actingReady?7:0);
       },
       face(d) { dir = d; return api; },
+      leap(to,height,ms) {
+        dir=to>x?1:-1;
+        segments.push({t,d:ms,x0:x,x1:to,dir,frames:WALK,fps:WALK.length*1000/ms,
+          elevation,landing:height});
+        t+=ms; x=to; elevation=height;
+        return api;
+      },
       go(to,pace=1) {
         const edge=sizes[who]*.45/width;
         to=Math.max(edge,Math.min(1-edge,to));
@@ -108,10 +131,10 @@ window.GD_CHRISTMAS = (() => {
         const duration = who?hops*520:Math.max(350,Math.abs(to-x)*34000/pace);
         const nextDirection = to>x ? 1 : -1;
         if (!who && dir!==nextDirection) {
-          api.hold(12,180);
+          api.hold(harvest()?14:12,180);
         }
         dir = to>x ? 1 : -1;
-        const fineWalk = !who && walkReady;
+        const fineWalk = !who && !harvest() && walkReady;
         segments.push({t,d:duration,x0:x,x1:to,dir,frames:fineWalk?WALK_FINE:WALK,
           fps:who?1000/65:(fineWalk?20:10)*pace,hop:!!who,hops,sheet:fineWalk?4:0});
         t += duration; x = to; return api;
@@ -181,24 +204,76 @@ window.GD_CHRISTMAS = (() => {
         .hold([3,2,1,0],1150,1000/287.5,3);
     }]
   ];
+  const THANKSGIVING_SCENES = [
+    ['pumpkin-perch',(m,w)=>{
+      const perch=.80;
+      w.go(.885).face(-1).hold([8,10,10,11],920,4)
+        .leap(perch,.62,760).face(-1).hold([8,11,12,11,8,9,8],3650,2)
+        .leap(.89,0,780).home();
+      m.hold(8,1400).go(.24,1.4).face(1).hold([14,11,11,12,14],2340,2).home();
+      return {kind:'pumpkin',x:perch,duration:w.duration};
+    },'pumpkin'],
+    ['harvest-cuddle',(m,w)=>{
+      const besideMillie=homes()[0]+sizes[0]*.29/width;
+      w.hold(8,400).go(besideMillie).face(-1).hold([10,10,8],800,4);
+      const cuddle=w.duration;
+      w.hold([14,14,15,15,15,14,8],3950,1.8).home();
+      m.hold(8,700).hold([10,11,8],cuddle-340,1.2)
+        .hold(15,2950).hold([9,8],700,2.8);
+    }],
+    ['leaf-chase',(m,w)=>{
+      m.hold(8,450).go(.34,1.4).face(1).hold([10,13,12,11,14],1500,3).home();
+      w.hold(8,1800).go(.59).hold([10,11,12,11,8],1150,4).go(.68).face(-1).hold(8,650).home();
+      return {kind:'leaf',start:200,duration:4200,x0:.23,x1:.66};
+    }],
+    ['pilgrim-greeting',(m,w)=>{
+      m.go(.28,1.25).face(1).hold([14,12,12,13,14],1700,3).home();
+      w.hold(8,1700).go(.63).face(-1).hold([11,12,12,8],1400,3).home();
+    }],
+    ['pumpkin-hide-and-seek',(m,w)=>{
+      const pumpkin=.81;
+      w.go(.77).face(1).hold(10,410).go(pumpkin);
+      const hiding=w.duration;
+      w.hold([14,14,14,11,12,12,8],2600,2.7);
+      const revealed=w.duration;
+      w.go(.69).face(1).hold([8,11,8],1000,3).home();
+      m.hold(8,680).go(.30,1.4).face(1).hold([14,10,11,14],1700,2.5).home();
+      return {kind:'pumpkin',x:pumpkin,duration:w.duration,foreground:[hiding,revealed]};
+    },'pumpkin'],
+    ['windblown-hat',(m,w)=>{
+      m.hold([8,11,11],1000,3).hold([11,12,10,14],1100,4).hold(8,1100);
+      w.hold(8,960).go(.83).face(-1).hold([11,13,13,13,8],1550,3).home();
+      return {kind:'leaf',start:0,duration:2000,x0:.125,x1:.35};
+    }],
+    ['orchard-parade',(m,w)=>{
+      w.go(.67).face(-1).hold([8,11,12,8],1050,4).go(.53).face(1).hold(11,500).home();
+      m.hold(8,800).go(.38,1.35).face(1).hold([13,13,12,14],1250,3).home();
+    }]
+  ];
   function startScene(now) {
     const forced = Q.get('xscene');
-    const available = SCENES.filter(s => (s[0] !== DANCE || danceReady) &&
+    const available = harvest()
+      ? THANKSGIVING_SCENES.filter(([, ,prop])=>prop!=='pumpkin' || thanksgivingArt.pumpkinReady)
+      : SCENES.filter(s => (s[0] !== DANCE || danceReady) &&
       (s[0] !== 'binky-and-bow' || playReady) &&
       (!['rabbit-lookout','rabbit-face-wash','playful-follow'].includes(s[0]) || behaviorReady));
-    if (demoScene && forced===DANCE && dancePending) return;
+    if (demoScene && !harvest() && forced===DANCE && dancePending) return;
+    if (demoScene && harvest() && thanksgivingArt.propsPending &&
+        THANKSGIVING_SCENES.some(([name,,prop])=>name===forced && prop==='pumpkin')) return;
     const regular = available.filter(s=>s[0]!==DANCE);
     const choices = regular.filter(s=>!recent.includes(s[0]));
-    const pool = choices.length ? choices : regular.filter(s=>s[0]!==recent.at(-1));
+    const pool = choices.length ? choices : regular.filter(s=>s[0]!==recent[recent.length-1]);
     const selected = available.find(s => s[0] === forced) ||
-      (danceReady && scenesUntilDance<=0 && !recent.includes(DANCE)
+      (!harvest() && danceReady && scenesUntilDance<=0 && !recent.includes(DANCE)
         ? available.find(s=>s[0]===DANCE)
         : pool[Math.floor(Math.random()*pool.length)]);
-    if (selected[0]===DANCE) scenesUntilDance=6+Math.floor(Math.random()*3);
-    else scenesUntilDance--;
+    if (!harvest()) {
+      if (selected[0]===DANCE) scenesUntilDance=6+Math.floor(Math.random()*3);
+      else scenesUntilDance--;
+    }
     const m = track(0), w = track(1);
     const prop = selected[1](m,w);
-    m.face(1).hold(14,500); w.face(-1).hold(8,500);
+    m.face(1).hold(harvest()?8:14,500); w.face(-1).hold(8,500);
     scene = {name:selected[0],start:now,tracks:[m.segments,w.segments],duration:Math.max(m.duration,w.duration),prop};
     canvas.dataset.scene = selected[0];
     recent.push(selected[0]); if (recent.length>6) recent.shift();
@@ -206,11 +281,11 @@ window.GD_CHRISTMAS = (() => {
   }
   function sample(who,now) {
     const home = homes()[who];
-    const idleFrame = who ? 8 : 14;
+    const idleFrame = who || harvest() ? 8 : 14;
     // A small, foot-anchored breath keeps the resting pose alive in quiet modes.
     const breath = (1-Math.cos(now/(who?4300:5600)*2*Math.PI))/2;
     const base = {x:home,dir:who?-1:1,frame:idleFrame,hop:0,stretch:1+.018*breath};
-    if (sleeping) { base.frame = 15; return base; }
+    if (sleeping) { base.frame = harvest()&&!who ? 9 : 15; return base; }
     if (state !== 'ok') return base;
     if (scene) {
       const elapsed = now-scene.start;
@@ -220,22 +295,27 @@ window.GD_CHRISTMAS = (() => {
         const phase=(age%520)/520, air=Math.max(0,Math.min(1,(phase-.13)/.65));
         const stride=air*air*(3-2*air);
         const u=Math.min(1,age/seg.d);
+        if (seg.landing!==undefined) {
+          const travel=u*u*(3-2*u);
+          const lift=seg.elevation+(seg.landing-seg.elevation)*travel+Math.sin(u*Math.PI)*.35;
+          return {x:seg.x0+(seg.x1-seg.x0)*travel,dir:seg.dir,frame:seg.frames[index],hop:lift*sizes[who]};
+        }
         const progress=seg.hop?(Math.floor(age/520)+stride)/seg.hops:seg.lift!==undefined?u*u*(3-2*u):u;
         return {x:seg.x0+(seg.x1-seg.x0)*progress,dir:seg.dir,
           frame:seg.frames[index],sheet:seg.sheet||0,
           hop:seg.hop ? Math.sin(air*Math.PI)*sizes[who]*.23 :
             seg.sheet===5 && seg.frames.length===8 && seg.frames[0]===0
               ? Math.sin(air*Math.PI)*sizes[who]*.28 :
-                (seg.lift||0)*Math.sin(u*Math.PI)*sizes[who]};
+                ((seg.elevation||0)+(seg.lift||0)*Math.sin(u*Math.PI))*sizes[who]};
       }
     }
     if (who && (readingUntil>now || (now+2500)%12000<850)) base.frame = 11;
-    else if ((now+who*3100)%9200<220) base.frame = who?9:15;
+    else if ((now+who*3100)%9200<220) base.frame = who||harvest()?9:15;
     return base;
   }
   const sheetNames=['original','dance','behavior','rise','walk','play','dance','acting'];
   function paint(who,s) {
-    const image=[assets[who],danceAssets[who],rabbitBehaviors[0],riseAssets[who],extras[0],extras[1],
+    const image=harvest()?thanksgivingArt.sheets[who]:[assets[who],danceAssets[who],rabbitBehaviors[0],riseAssets[who],extras[0],extras[1],
       duetAssets[who],actingAssets[0]][s.sheet||0];
     const size=sizes[who],tileW=image.naturalWidth/4,tileH=image.naturalHeight/4;
     ctx.save();
@@ -247,6 +327,30 @@ window.GD_CHRISTMAS = (() => {
     } finally {
       ctx.restore();
     }
+  }
+  function paintHarvestProp(now,foreground) {
+    const prop=scene?.prop;
+    if(!prop)return;
+    const age=now-scene.start;
+    const u=(age-(prop.start||0))/prop.duration;
+    if(u<0 || u>1)return;
+    const hidesRabbit=prop.foreground && age>=prop.foreground[0] && age<prop.foreground[1];
+    if(Boolean(hidesRabbit)!==foreground)return;
+    ctx.save();
+    ctx.globalAlpha=Math.min(1,u*14,(1-u)*12);
+    if(prop.kind==='pumpkin' && thanksgivingArt.pumpkinReady){
+      const image=thanksgivingArt.pumpkin;
+      const h=sizes[1]*.77,w=h*image.naturalWidth/image.naturalHeight;
+      ctx.drawImage(image,prop.x*width-w/2,floor-h,w,h);
+    }else if(prop.kind==='leaf' && thanksgivingArt.leafReady){
+      const image=thanksgivingArt.leaf;
+      const size=Math.max(9,height*.024);
+      const x=(prop.x0+(prop.x1-prop.x0)*u+Math.sin(u*3*Math.PI)*.016)*width;
+      ctx.translate(x,floor-height*(.43-.4*u));
+      ctx.rotate(Math.sin(u*4*Math.PI)*.7+u*2.2);
+      ctx.drawImage(image,-size/2,-size/2,size,size);
+    }
+    ctx.restore();
   }
   function paintProp(now) {
     const prop=scene?.prop;
@@ -285,13 +389,15 @@ window.GD_CHRISTMAS = (() => {
     if (now-lastBounds>1000) { layoutBounds(); lastBounds = now; }
     // Reading and bedtime states select poses, without fading the animals.
     ctx.globalAlpha = 1;
+    if (harvest()) paintHarvestProp(now,false);
     for (let who=0;who<2;who++) {
       const s=sample(who,now);
       paint(who,s);
       canvas.dataset[who?'winstonFrame':'millieFrame']=String(s.frame);
       canvas.dataset[who?'winstonSheet':'millieSheet']=sheetNames[s.sheet||0];
     }
-    paintProp(now);
+    if (harvest()) paintHarvestProp(now,true);
+    else paintProp(now);
     // Keep the chart and header clear. Reading details paint above the animals.
     ctx.save();
     ctx.globalCompositeOperation='destination-out';
@@ -330,7 +436,7 @@ window.GD_CHRISTMAS = (() => {
     if (now-lastDraw>=40) { draw(now); lastDraw=now; }
     raf=requestAnimationFrame(loop);
   }
-  async function setEnabled(value) {
+  async function setEnabled(value,themeId='christmas') {
     enabled=!!value; const token=++generation;
     cancelAnimationFrame(raf); raf=0;
     if (!enabled) {
@@ -338,8 +444,16 @@ window.GD_CHRISTMAS = (() => {
       scene=null; return;
     }
     init();
-    ready=(await loaded).every(Boolean);
+    if (activeTheme!==themeId) {
+      activeTheme=themeId;
+      canvas.style.display='none';
+      ctx.clearRect(0,0,width,height);
+      delete canvas.dataset.scene;
+      recent=[];
+    }
+    const available=(await (harvest()?loadThanksgiving():loaded)).every(Boolean);
     if (!enabled || token!==generation) return;
+    ready=available;
     // Failed decorative assets never interrupt glucose display or polling.
     if (!ready) { canvas.style.display='none'; return; }
     canvas.style.display='block'; layout(); scene=null; lastMode='';
@@ -351,5 +465,5 @@ window.GD_CHRISTMAS = (() => {
     if (state!=='ok') { scene=null; readingUntil=0; }
     else if (o.fresh && previous==='ok' && !scene) readingUntil=performance.now()+1800;
   }
-  return {setEnabled,reading,sceneNames:SCENES.map(s=>s[0])};
+  return {setEnabled,reading,sceneNames:SCENES.map(s=>s[0]),thanksgivingSceneNames:THANKSGIVING_SCENES.map(s=>s[0])};
 })();

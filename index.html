@@ -59,8 +59,11 @@ body.simple #fx{display:none}
 #fx-sky,#fx-amb,#fx-decor,#fx-stage{position:absolute;inset:0}
 #fx-decor{opacity:.85}
 body:not(.simple) #bg,body:not(.simple) #side,body:not(.simple) header{text-shadow:0 0 1.6vh var(--bg),0 0 .6vh var(--bg),0 0 .3vh var(--bg)}
+:root{--harvest-leaf:url("assets/thanksgiving/leaf.png")}
 body:not(.simple) #fx[data-theme="christmas"] ~ #app #side{text-shadow:0 0 2px var(--bg),0 0 4px var(--bg),0 1px 4px var(--bg),0 0 8px var(--bg)}
 body:not(.simple) #fx[data-theme="christmas"] ~ #app #arrow{filter:drop-shadow(0 0 3px var(--bg))}
+body:not(.simple) #fx[data-theme="thanksgiving"] ~ #app #side{text-shadow:0 0 2px var(--bg),0 0 4px var(--bg),0 1px 4px var(--bg),0 0 8px var(--bg)}
+body:not(.simple) #fx[data-theme="thanksgiving"] ~ #app #arrow{filter:drop-shadow(0 0 3px var(--bg))}
 .ch{position:absolute;left:0;bottom:var(--floor);width:0;height:0;will-change:transform}
 .ch-y{position:absolute;left:0;bottom:0;width:0;height:0}
 .ch-f{position:absolute;bottom:0;transform-origin:50% 100%}
@@ -119,6 +122,7 @@ body:not(.simple) #fx[data-theme="christmas"] ~ #app #arrow{filter:drop-shadow(0
 .pt{position:absolute;top:-6vh;will-change:transform;animation:pt-fall linear infinite}
 .pt i{display:block;border-radius:50%;background:currentColor;color:#fff;opacity:.75;animation:pt-sway ease-in-out infinite alternate}
 .pt i svg{display:block;width:100%;height:100%}
+.pt i.p-harvestleaf{background:var(--harvest-leaf) center/contain no-repeat;border-radius:0;opacity:.85}
 @keyframes pt-fall{to{transform:translateY(114vh)}}
 @keyframes pt-sway{from{transform:translateX(-2.5vw) rotate(-50deg)}to{transform:translateX(2.5vw) rotate(50deg)}}
 .pt.rise{top:auto;bottom:-6vh;animation-name:pt-rise}
@@ -194,7 +198,7 @@ body:not(.simple) #fx[data-theme="christmas"] ~ #app #arrow{filter:drop-shadow(0
 </div>
 
 <script src="sprites.js"></script>
-<script src="christmas.js?v=20261122-overnight"></script>
+<script src="christmas.js?v=20261126-thanksgiving"></script>
 <script>
 "use strict";
 const APP_ID = "d89443d2-327c-4a6f-89e5-496bbb0317db";
@@ -241,11 +245,11 @@ function parse(list) {
 function demoData() {
   const now = Date.now(), out = [];
   const params = new URLSearchParams(location.search);
-  const previewChristmasScene = params.get("theme") === "christmas" && params.has("xscene");
+  const previewHolidayScene = ["christmas","thanksgiving"].includes(params.get("theme")) && params.has("xscene");
   for (let i = 287; i >= 0; i--) {
     const t = now - i * 300000 - 90000;
     const v = Math.round(135 + 55 * Math.sin(t / 5.4e6) + 22 * Math.sin(t / 1.3e6));
-    out.push({ t, v: previewChristmasScene && i === 0 ? Math.max(v, cfg.low + 5) : v });
+    out.push({ t, v: previewHolidayScene && i === 0 ? Math.max(v, cfg.low + 5) : v });
   }
   out.forEach((p, i) => { const d = i ? p.v - out[i - 1].v : 0;
     p.trend = d > 9 ? "DoubleUp" : d > 5 ? "SingleUp" : d > 2 ? "FortyFiveUp" : d < -9 ? "DoubleDown" : d < -5 ? "SingleDown" : d < -2 ? "FortyFiveDown" : "Flat"; });
@@ -638,6 +642,7 @@ const FX = (() => {
   const PT = {
     snow: { m: "fall", s: [.5, 1.4], d: [10, 22] },
     leaf: { m: "fall", s: [1.5, 2.5], d: [9, 16], c: LEAFC },
+    harvestleaf: { m: "fall", s: [1.2, 2.8], d: [10, 20] },
     petal: { m: "fall", s: [1, 1.7], d: [10, 18], c: ["#FFC1D9", "#FFD9E8", "#fff"] },
     confetti: { m: "fall", s: [.8, 1.4], d: [7, 13], c: FWC },
     heart: { m: "rise", s: [1.5, 2.8], d: [12, 22], c: [PINK, "#FF8FA8", "#FFC1D0"], h: `<svg viewBox="0 0 100 100"><path d="${HEART}" fill="currentColor"/></svg>` },
@@ -710,11 +715,11 @@ const FX = (() => {
       sky: sky2("rgba(110,60,170,.28)", "rgba(220,110,20,.12)"), glow: "#F08A24", amb: ["leaf", 14], tags: ["pumpkin", "fall"],
       hats: { m: { head: ACC.pumpkin }, w: { head: ACC.party("#F08A24", "#2b2b2b") } },
       decor: () => lights(["#F08A24", "#8A68BE"]) + D("jack", 3, 6) + D("jack", 96.500, 7.500) + D("pumpkin", 90.500, 4), flutter: "bat", flyer: "bat" },
-    { id: "thanksgiving", name: "Thanksgiving", when: (d, md, y) => d.getMonth() === 10 && d.getDate() === nthDay(y, 10, 4, 4), // the day itself (Christmas season surrounds it)
-      sky: sky2("rgba(200,110,30,.26)", "rgba(140,70,30,.12)"), glow: "#E8A33D", amb: ["leaf", 16], tags: ["thanks", "pumpkin", "fall"],
+    { id: "thanksgiving", name: "Thanksgiving", illustrated: true, when: (d, md, y) => d.getMonth() === 10 && d.getDate() === nthDay(y, 10, 4, 4),
+      sky: 'linear-gradient(to bottom,rgba(5,7,10,.2),rgba(5,7,10,.05) 60%,#05070a 82%),url("assets/thanksgiving/harvest-night.jpg") center top/100% 86% no-repeat', glow: "#E8A33D", amb: ["harvestleaf", 25], tags: ["thanks", "pumpkin", "fall"],
       hats: { m: { head: ACC.pilgrim }, w: { neck: ACC.scarf("#C7692B", GOLD) } },
-      decor: () => D("pumpkin", 3, 6) + D("pumpkin", 96.500, 7.500) + D("pie", 90, 5) + D("leafpile", 6.500, 6) },
-    { id: "christmas", name: "Christmas", when: (d, md) => md >= 1101 && md <= 1230, // Nov 1 – Dec 30
+      decor: () => "" },
+    { id: "christmas", name: "Christmas", illustrated: true, when: (d, md) => md >= 1101 && md <= 1230, // Nov 1 – Dec 30
       sky: 'linear-gradient(to bottom,rgba(3,8,16,.25),rgba(3,8,16,.10) 60%,#05070a 82%),url("assets/christmas/winter-night.png") center top/100% 86% no-repeat', glow: "#8ba8bc", amb: ["snow", 30], tags: ["xmas", "snow"],
       hats: { m: { head: ACC.santa, neck: ACC.scarf("#1F7A4A", "#fff") }, w: { head: ACC.antlers, neck: ACC.scarf("#D8322F", "#fff") } },
       decor: () => "",
@@ -1016,7 +1021,7 @@ const FX = (() => {
     busy = false;
   }
   async function direct(intro) {
-    if (theme.id === "christmas" && window.GD_CHRISTMAS) { busy = false; return; }
+    if (theme.illustrated && window.GD_CHRISTMAS) { busy = false; return; }
     const g = ++gen; busy = true; mode = null;
     try {
       clearProps(); M.calm(); W.calm(); M.tp(-16); W.tp(116);
@@ -1047,9 +1052,9 @@ const FX = (() => {
   function applyTheme(t) {
     theme = t; sky.style.background = t.sky || "none"; decor.innerHTML = t.decor ? t.decor() : "";
     fx.dataset.theme = t.id;
-    const illustratedChristmas = t.id === "christmas" && !!window.GD_CHRISTMAS;
-    stage.style.display = illustratedChristmas ? "none" : "";
-    if (window.GD_CHRISTMAS) window.GD_CHRISTMAS.setEnabled(on && illustratedChristmas);
+    const illustrated = t.illustrated && !!window.GD_CHRISTMAS;
+    stage.style.display = illustrated ? "none" : "";
+    if (window.GD_CHRISTMAS) window.GD_CHRISTMAS.setEnabled(on && illustrated,t.id);
     setAmb(...(t.amb || [])); M.dress(t.hats && t.hats.m); W.dress(t.hats && t.hats.w);
     clearInterval(tickT); if (t.tick) tickT = setInterval(() => { if (on && mode === "play" && !document.hidden) t.tick(); }, 6000);
   }

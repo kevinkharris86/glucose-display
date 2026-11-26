@@ -2,7 +2,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
-const mime = {'.html':'text/html', '.js':'text/javascript', '.png':'image/png', '.css':'text/css'};
+const mime = {'.html':'text/html', '.js':'text/javascript', '.png':'image/png', '.jpg':'image/jpeg', '.css':'text/css'};
 http.createServer((req,res) => {
   const name = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
   const file = path.resolve(root, '.' + (name === '/' ? '/index.html' : name));

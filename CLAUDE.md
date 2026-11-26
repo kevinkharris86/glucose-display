@@ -21,12 +21,12 @@ A small web app (`index.html` + `sprites.js`) that displays real-time Dexcom CGM
 - `theme` — `auto` (by date) or a theme id to pin one.
 
 ## FX system (Millie the golden retriever & Winston the Holland Lop)
-Seasonal decoration is the `FX` module near the bottom of `index.html`. Christmas animals use `christmas.js` and the illustrated sheets in `assets/christmas/`.
+Seasonal decoration is the `FX` module near the bottom of `index.html`. Christmas and Thanksgiving share the illustrated animal renderer in `christmas.js`, with separate artwork under `assets/christmas/` and `assets/thanksgiving/`.
 
 **Safety rule: the original decoration and Christmas canvas stay behind `#app`.** The Christmas canvas has `pointer-events:none` and protects the header, graph, and controls with masks. Reading details paint above the animals with a contrast shadow. Low, stale, or missing readings keep the Christmas characters at rest. With a current reading at or above the low limit, Christmas scenes play around the clock. These states preserve full Christmas sprite opacity. FX code never changes polling, chart rendering, or the measurement layout.
 
 ### Illustrated Christmas pack (approved November 2026)
-- Replaces the photo animals **only** for the Christmas theme; other seasons retain the existing characters.
+- Supplies the illustrated animals and scenes for Christmas. Thanksgiving has its own illustrated pack.
 - Two transparent 4×4 sheets, 16 separately drawn frames per animal: eight walking/hopping phases plus eight gestures/rest poses. Mature proportions and restrained expressions, Santa hat for Millie and burgundy scarf for Winston.
 - Display scale is locked to viewport dimensions and available header clearance, across every sheet. Never use the pulsing number to calculate animal scale. Millie remains large; Winston keeps his enlarged size. They rest facing each other, and movement determines their direction. No measurement positions or sizes change.
 - `christmas.js` paints at about 25 fps with time-based frame selection. The first full scene starts 8–15 seconds after the display is ready to play. Eight distinct scenes rotate every 55–85 seconds. Props and travel pause in quiet modes while gentle resting breaths continue.
@@ -38,6 +38,12 @@ Seasonal decoration is the `FX` module near the bottom of `index.html`. Christma
 - Tests: `node --test tools/christmas.test.cjs`. Local preview: `node tools/preview-server.cjs`, then `http://127.0.0.1:8201/?demo&theme=christmas&fast`. Force a vignette with `&xscene=crossing-paths`; add `&night` to the demo to preview sleeping poses.
 - Source art was generated with the built-in image generation tool using the user's approved likeness preview. `tools/prepare-sheets.ps1` slices the equal-grid art and aligns scale/feet into 384px tiles; no poses are synthesized by transforms. Prompt specification is in `assets/christmas/ART.md`.
 
+### Illustrated Thanksgiving pack
+- Thanksgiving Day uses a dark painted autumn orchard with falling maple leaves. Two transparent sheets give Millie and Winston 16 individually drawn poses each, with a pilgrim hat for Millie and an amber neckerchief for Winston. The art was generated using the established Christmas character likenesses and matched to the orchard's painted style.
+- Seven scenes share the Christmas scheduler and layout protections. Winston hops onto a pumpkin to sit and look around, nestles beside Millie, and peeks out from behind a pumpkin. The pair also chase a leaf, greet each other, react to a gust, and lead an orchard parade.
+- Preview the pumpkin scene at `?demo&theme=thanksgiving&xscene=pumpkin-perch&fast`. In Auto mode, Thanksgiving has priority on the fourth Thursday of November. Christmas resumes on Friday and stays active through December 30.
+
+### Other seasons
 - **Characters** are cutouts of the family's real photos (white sticker outline), stored as data-URI WebP in `sprites.js` (`window.GD_SPRITES`). If `sprites.js` is missing the app falls back to the plain display.
   - `SPRITES` — per-photo display size, facing, and hat/neck/mouth anchor points.
   - `CAST` — maps poses (`""`, `lie`, `toy`, `sleep`, `move`, `up`, `loaf`, `peek`…) to photos. Motion is puppet-style: CSS classes on the actor (`walk`, `run`, `hop`, `wag`, `tilt`, `shake`, `chew`, `asleep`…) plus `go()/jump()/liftTo()`.
