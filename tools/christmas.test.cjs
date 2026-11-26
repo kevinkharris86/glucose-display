@@ -294,29 +294,32 @@ test('the pumpkin rolls in once, stays through both scenes, and rolls off fully 
   assert.ok(travel.some(p=>Math.abs(p.x-1024*.82)<.01));
   assert.ok(travel.every((p,i)=>!i || p.t-travel[i-1].t===40),'the pumpkin remains between scenes');
 });
-test('the roast drops, hands off to drawn mouth-held frames, and is eaten at the edge',async()=>{
+test('the roast drops, travels in a full stride cycle, and is eaten slowly at the edge',async()=>{
   const h=harness('?demo&fast&xscene=turkey-dinner');
   h.api.reading(healthy);
   await h.api.setEnabled(true,'thanksgiving');
   const drop=[], carry=[], eaten=[];
   let attached=false;
-  for(let t=40;t<30000;t+=40){
+  for(let t=40;t<35000;t+=40){
     h.clearCalls();
     h.step(t);
     if(attached && h.canvas.dataset.scene==='rest')break;
     const prop=h.calls.find(c=>c[0]?.url?.includes('/roast-turkey.png'));
     const dog=h.calls.find(c=>c[0]?.url?.includes('/millie-turkey.png'));
+    const walking=h.calls.find(c=>c[0]?.url?.includes('/millie-turkey-walk.png'));
     if(prop){assert.equal(attached,false);drop.push(h.translations.at(-3));}
-    if(!dog)continue;
+    if(!dog && !walking)continue;
     attached=true;
     const frame=+h.canvas.dataset.millieFrame, x=h.translations.at(-2)[0];
-    if(frame>=4 && frame<=7)carry.push({frame,x});
-    if(frame>=9)eaten.push({frame,x});
+    if(walking)carry.push({frame,x});
+    else if(frame>=9)eaten.push({frame,x,t});
   }
   assert.ok(drop[0][1]<0);
   assert.ok(drop.some(p=>p[0]===512 && p[1]>300));
-  assert.equal(new Set(carry.map(p=>p.frame)).size,4);
+  assert.equal(new Set(carry.map(p=>p.frame)).size,16);
   assert.ok(carry.every((p,i)=>!i || p.x<=carry[i-1].x) && carry[0].x-carry.at(-1).x>300);
   assert.ok(eaten.every(p=>p.x<200));
-  assert.ok(eaten.some(p=>p.frame===14) && eaten.at(-1).frame===15);
+  assert.ok(eaten.every((p,i)=>!i || p.frame>=eaten[i-1].frame),'portions get smaller without regrowing');
+  assert.ok(eaten.at(-1).t-eaten[0].t>12000);
+  assert.deepEqual([...new Set(eaten.map(p=>p.frame))],[9,10,11,12,13,14,15]);
 });

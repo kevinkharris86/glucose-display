@@ -12,7 +12,9 @@ window.GD_CHRISTMAS = (() => {
   const DANCE = 'babydoll-dance';
   const PERCH = 'pumpkin-perch', HIDE = 'pumpkin-hide-and-seek', TURKEY = 'turkey-dinner';
   const PUMPKIN_X = .82, PUMPKIN_ROLL = 1150, PUMPKIN_HEIGHT = .68;
-  const TURKEY_SHEET = 8, CARRY = [4,5,6,7];
+  const TURKEY_SHEET = 8, CARRY_SHEET = 9;
+  // Follow the reaching forepaw through contact, weight transfer and recovery.
+  const CARRY = [0,4,9,12,8,5,10,13,11,6,7,15,1,2,3,14];
   const images = (names,folder='christmas') => names.map(name => {
     const image = new Image();
     const revision=folder==='thanksgiving'?'20261127':'20261122';
@@ -36,12 +38,15 @@ window.GD_CHRISTMAS = (() => {
   const harvest = () => activeTheme==='thanksgiving';
   function loadThanksgiving() {
     if (!thanksgivingArt) {
-      const [dog,rabbit,pumpkin,leaf,turkey,dinner]=images(
-        ['millie','winston','pumpkin','leaf','roast-turkey','millie-turkey'],'thanksgiving');
-      thanksgivingArt={sheets:[dog,rabbit],pumpkin,leaf,turkey,dinner};
+      const [dog,rabbit,pumpkin,leaf,turkey,dinner,carry]=images(
+        ['millie','winston','pumpkin','leaf','roast-turkey','millie-turkey','millie-turkey-walk'],'thanksgiving');
+      thanksgivingArt={sheets:[dog,rabbit],pumpkin,leaf,turkey,dinner,carry};
       waitForImages([pumpkin]).then(([ready])=>{thanksgivingArt.pumpkinReady=ready;});
       waitForImages([leaf]).then(([ready])=>{thanksgivingArt.leafReady=ready;});
-      waitForImages([turkey,dinner]).then(results=>{thanksgivingArt.turkeyReady=results.every(Boolean);});
+      waitForImages([turkey,dinner,carry]).then(([hasTurkey,hasDinner,hasCarry])=>{
+        thanksgivingArt.turkeyReady=hasTurkey && hasDinner;
+        thanksgivingArt.carryReady=hasCarry;
+      });
       thanksgivingArt.loaded=waitForImages(thanksgivingArt.sheets);
     }
     return thanksgivingArt.loaded;
@@ -87,7 +92,7 @@ window.GD_CHRISTMAS = (() => {
     if (canvas) return;
     canvas = document.createElement('canvas'); canvas.id = 'christmas-animals';
     canvas.setAttribute('aria-hidden','true');
-    canvas.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;display:none';
+    canvas.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;display:none';
     document.body.insertBefore(canvas,document.getElementById('controls'));
     ctx = canvas.getContext('2d');
     window.addEventListener('resize', () => { resetScene(); layout(); });
@@ -127,21 +132,32 @@ window.GD_CHRISTMAS = (() => {
         t+=ms; x=to; elevation=height;
         return api;
       },
-      go(to,pace=1,sheet=0) {
+      go(to,pace=1) {
         const edge=sizes[who]*.45/width;
         to=Math.max(edge,Math.min(1-edge,to));
         if (Math.abs(to-x)*width<1) return api;
         const hops=Math.max(1,Math.ceil(Math.abs(to-x)*width/(sizes[who]*.75)));
         const duration = who?hops*520:Math.max(350,Math.abs(to-x)*34000/pace);
         const nextDirection = to>x ? 1 : -1;
-        if (!who && dir!==nextDirection && !sheet) {
+        if (!who && dir!==nextDirection) {
           api.hold(harvest()?14:12,180);
         }
         dir = to>x ? 1 : -1;
         const fineWalk = !who && !harvest() && walkReady;
-        segments.push({t,d:duration,x0:x,x1:to,dir,frames:sheet===TURKEY_SHEET?CARRY:fineWalk?WALK_FINE:WALK,
-          fps:who?1000/65:(fineWalk?20:10)*pace,hop:!!who,hops,sheet:fineWalk?4:sheet});
+        segments.push({t,d:duration,x0:x,x1:to,dir,frames:fineWalk?WALK_FINE:WALK,
+          fps:who?1000/65:(fineWalk?20:10)*pace,hop:!!who,hops,sheet:fineWalk?4:0});
         t += duration; x = to; return api;
+      },
+      dinnerWalk(to,carrying=false) {
+        const distance=Math.abs(to-x)*width/sizes[0];
+        const repeats=Math.max(1,Math.round(distance/.49));
+        const d=Math.max(650,distance*2650);
+        const detailed=carrying && thanksgivingArt.carryReady;
+        const frames=detailed?CARRY:carrying?[4,5,6,7]:WALK;
+        const sheet=detailed?CARRY_SHEET:carrying?TURKEY_SHEET:0;
+        dir=to>x?1:-1;
+        segments.push({t,d,x0:x,x1:to,dir,frames,sheet,fps:frames.length*repeats*1000/d});
+        t+=d; x=to; return api;
       },
       home() { api.go(homes()[who]); dir = who?-1:1; return api; },
       get duration() { return t; }
@@ -257,14 +273,16 @@ window.GD_CHRISTMAS = (() => {
     [TURKEY,(m,w)=>{
       const mealX=.50;
       const pickup=mealX+sizes[0]*.29/width;
-      m.hold([8,11,14,11],1250,3.2).go(pickup,2.4).face(-1).hold([14,10],560,3.6);
+      m.hold([8,11,14,11],1250,3.2).dinnerWalk(pickup).face(-1).hold([14,10],560,3.6);
       // The roast is part of the drawn poses from the instant she closes her mouth.
       const grab=m.duration;
       m.hold([1,2,3],780,3.85,TURKEY_SHEET)
-        .go(homes()[0],2.8,TURKEY_SHEET)
+        .dinnerWalk(homes()[0],true)
         .hold(3,480,1,TURKEY_SHEET)
-        .hold([8,9,10,11,10,11,12,13,12,13,14,15],4800,2.5,TURKEY_SHEET)
-        .hold(15,1200,1,TURKEY_SHEET);
+        .hold(8,520,1,TURKEY_SHEET).hold(9,1350,1,TURKEY_SHEET)
+        .hold(10,850,1,TURKEY_SHEET).hold(11,3650,1,TURKEY_SHEET)
+        .hold(12,940,1,TURKEY_SHEET).hold(13,3850,1,TURKEY_SHEET)
+        .hold(14,900,1,TURKEY_SHEET).hold(15,1300,1,TURKEY_SHEET);
       w.hold([8,11,12,11,8],2500,2).go(.78).face(-1)
         .hold([11,8,9,8],2950,2.4).hold([13,8],1300,1.5).home();
       return {kind:'turkey',x:mealX,grab};
@@ -326,8 +344,10 @@ window.GD_CHRISTMAS = (() => {
           return {x:seg.x0+(seg.x1-seg.x0)*travel,dir:seg.dir,frame:seg.frames[index],hop:lift*sizes[who]};
         }
         const progress=seg.hop?(Math.floor(age/520)+stride)/seg.hops:seg.lift!==undefined?u*u*(3-2*u):u;
+        const frame=seg.frames[index];
+        const chewing=seg.sheet===TURKEY_SHEET && (frame===11 || frame===13);
         return {x:seg.x0+(seg.x1-seg.x0)*progress,dir:seg.dir,
-          frame:seg.frames[index],sheet:seg.sheet||0,
+          frame,sheet:seg.sheet||0,stretch:chewing?1-.014*Math.sin(age/260*Math.PI)**2:1,
           hop:seg.hop ? Math.sin(air*Math.PI)*sizes[who]*.23 :
             seg.sheet===5 && seg.frames.length===8 && seg.frames[0]===0
               ? Math.sin(air*Math.PI)*sizes[who]*.28 :
@@ -338,9 +358,9 @@ window.GD_CHRISTMAS = (() => {
     else if ((now+who*3100)%9200<220) base.frame = who||harvest()?9:15;
     return base;
   }
-  const sheetNames=['original','dance','behavior','rise','walk','play','dance','acting','turkey'];
+  const sheetNames=['original','dance','behavior','rise','walk','play','dance','acting','turkey','turkey-walk'];
   function paint(who,s) {
-    const image=harvest()?(s.sheet===TURKEY_SHEET?thanksgivingArt.dinner:thanksgivingArt.sheets[who]):[assets[who],danceAssets[who],rabbitBehaviors[0],riseAssets[who],extras[0],extras[1],
+    const image=harvest()?(s.sheet===CARRY_SHEET?thanksgivingArt.carry:s.sheet===TURKEY_SHEET?thanksgivingArt.dinner:thanksgivingArt.sheets[who]):[assets[who],danceAssets[who],rabbitBehaviors[0],riseAssets[who],extras[0],extras[1],
       duetAssets[who],actingAssets[0]][s.sheet||0];
     const size=sizes[who],tileW=image.naturalWidth/4,tileH=image.naturalHeight/4;
     ctx.save();
@@ -450,7 +470,7 @@ window.GD_CHRISTMAS = (() => {
     }
     if (harvest()) paintPumpkin(now,true);
     else paintProp(now);
-    // Keep the chart and header clear. Reading details paint above the animals.
+    // Keep the chart, header and controls clear while animals cross the digits.
     ctx.save();
     ctx.globalCompositeOperation='destination-out';
     protectedRects.forEach(r => ctx.fillRect(r.x,r.y,r.w,r.h));
@@ -467,13 +487,9 @@ window.GD_CHRISTMAS = (() => {
     const rabbitClearance=harvest()?1.60:.84;
     sizes=[Math.min(height*.56,width*.38,headroom/.84),Math.min(height*.221,width*.195,headroom/rabbitClearance)];
     homePositions=width<height?[.20,.85]:[.16,.90];
-    // Millie's head faces the clear left edge at rest; her body may pass behind
-    // the number. Keep the full larger silhouette within the screen edges.
+    // Keep the full larger silhouette within the screen edges.
     homePositions[0]=Math.min(.45*sizes[0]/width,1-.45*sizes[0]/width);
     homePositions[1]=Math.min(homePositions[1],1-.45*sizes[1]/width);
-    // The number is painted above the animals by #app's existing z-index:1.
-    // Its actual glyphs cover the fur naturally, avoiding rectangular cutouts.
-    // Keep the graph, header and controls fully clear.
   }
   function loop(now) {
     raf=0;

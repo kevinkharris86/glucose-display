@@ -32,7 +32,7 @@ main{position:relative;display:flex;align-items:center;justify-content:center;ga
 canvas{width:100%;height:100%;display:block}
 #msg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:4vh;color:var(--muted);text-align:center;width:80%}
 /* controls */
-#controls{position:fixed;z-index:2;right:2.5vw;bottom:3vh;display:flex;gap:1.5vh;opacity:0;pointer-events:none;transition:opacity .4s}
+#controls{position:fixed;z-index:3;right:2.5vw;bottom:3vh;display:flex;gap:1.5vh;opacity:0;pointer-events:none;transition:opacity .4s}
 body.showui #controls{opacity:1;pointer-events:auto}
 .btn{background:#1a222c;color:var(--fg);border:1px solid #2b3642;border-radius:1.6vh;padding:1.6vh 2.6vh;font-size:2.6vh;cursor:pointer}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:#04111f;font-weight:600}
@@ -50,12 +50,15 @@ input,select{background:#05080c;color:var(--fg);border:1px solid #2b3642;border-
 /* ---------- new-reading pulse (always on, even in simple mode) ---------- */
 #bg.pulse{animation:bgpulse 2.8s cubic-bezier(.4,0,.2,1)}
 @keyframes bgpulse{0%,100%{transform:scale(1)}30%,62%{transform:scale(1.13)}}
-/* ---------- FX layer: sits BEHIND #app so it can never cover readings ---------- */
+/* ---------- Decoration behind the readings, characters in front ---------- */
 #app{z-index:1}
-#fx{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;transition:opacity 1.3s;--floor:35vh;--u:min(1vh,.68vw)}
-body.simple #fx{display:none}
-#fx.swap{opacity:0}
-#fx.night{opacity:.5}
+#fx,#fx-actors{position:fixed;inset:0;overflow:hidden;pointer-events:none;transition:opacity 1.3s;--floor:35vh;--u:min(1vh,.68vw)}
+#fx{z-index:0}
+#fx-actors,#christmas-animals{z-index:2;pointer-events:none}
+#fx-actors{clip-path:inset(9vh 0 var(--floor))}
+body.simple #fx,body.simple #fx-actors{display:none}
+#fx.night,#fx.night ~ #fx-actors{opacity:.5}
+#fx.swap,#fx.swap ~ #fx-actors{opacity:0}
 #fx-sky,#fx-amb,#fx-decor,#fx-stage{position:absolute;inset:0}
 #fx-decor{opacity:.85}
 body:not(.simple) #bg,body:not(.simple) #side,body:not(.simple) header{text-shadow:0 0 1.6vh var(--bg),0 0 .6vh var(--bg),0 0 .3vh var(--bg)}
@@ -143,7 +146,7 @@ body:not(.simple) #fx[data-theme="thanksgiving"] ~ #app #arrow{filter:drop-shado
 .twk{animation:lt 1.8s ease-in-out infinite alternate}
 @keyframes lt{from{opacity:.3}to{opacity:1}}
 @media (orientation:portrait){
-  #fx{--floor:30vh}
+  #fx,#fx-actors{--floor:30vh}
   #app{grid-template-rows:auto 1fr 28vh}
   main{flex-direction:column;gap:3vh}
   #bg{font-size:min(30vh,40vw)}
@@ -198,7 +201,7 @@ body:not(.simple) #fx[data-theme="thanksgiving"] ~ #app #arrow{filter:drop-shado
 </div>
 
 <script src="sprites.js"></script>
-<script src="christmas.js?v=20261127-thanksgiving"></script>
+<script src="christmas.js?v=20261127-foreground"></script>
 <script>
 "use strict";
 const APP_ID = "d89443d2-327c-4a6f-89e5-496bbb0317db";
@@ -446,7 +449,7 @@ const FX = (() => {
   const U = () => Math.min(innerHeight / 100, innerWidth * .0068), vw = v => v * innerWidth / 100, vh = v => v * innerHeight / 100, portrait = () => innerHeight > innerWidth;
   const soft = p => { p && p.catch && p.catch(() => {}); };
   let gen = 0, on = false, theme = null, mode = null, busy = false, celebrate = false, state = "none", tickT = 0;
-  let fx, sky, amb, decor, stage, M, W;
+  let fx, sky, amb, decor, stage, actors, M, W;
   const props = new Set();
   const wait = ms => new Promise((res, rej) => { const g = gen; setTimeout(() => g === gen ? res() : rej(CANCEL), ms); });
   const fin = (a, ms) => new Promise((res, rej) => { const g = gen; let d = 0; const end = () => { if (d++) return; g === gen ? res() : rej(CANCEL); }; a.onfinish = end; a.oncancel = end; setTimeout(end, ms + 300); });
@@ -543,7 +546,7 @@ const FX = (() => {
       el.innerHTML = '<div class="ch-y"><div class="ch-f"><div class="spr-t"><div class="spr">' +
         [...new Set(Object.values(o.poses))].map(k => `<img data-k="${k}" src="${IMG[k]}" alt="">`).join("") + '<svg class="acc"></svg></div></div></div></div>';
       this.yEl = el.firstChild; this.fEl = this.yEl.firstChild; this.tEl = this.fEl.firstChild; this.acc = el.querySelector(".acc"); this.imgs = [...el.querySelectorAll("img")];
-      stage.appendChild(el); this.place(); this.render();
+      actors.appendChild(el); this.place(); this.render();
     }
     get p() { return this.el.dataset.pose || ""; }
     get h() { return this.s.w * this.s.ar; }
@@ -1053,12 +1056,12 @@ const FX = (() => {
     theme = t; sky.style.background = t.sky || "none"; decor.innerHTML = t.decor ? t.decor() : "";
     fx.dataset.theme = t.id;
     const illustrated = t.illustrated && !!window.GD_CHRISTMAS;
-    stage.style.display = illustrated ? "none" : "";
+    stage.hidden = actors.hidden = illustrated;
     if (window.GD_CHRISTMAS) window.GD_CHRISTMAS.setEnabled(on && illustrated,t.id);
     setAmb(...(t.amb || [])); M.dress(t.hats && t.hats.m); W.dress(t.hats && t.hats.w);
     clearInterval(tickT); if (t.tick) tickT = setInterval(() => { if (on && mode === "play" && !document.hidden) t.tick(); }, 6000);
   }
-  function wipe() { gen++; busy = false; [...stage.children].forEach(c => c.classList.contains("ch") || c.remove()); props.clear(); }
+  function wipe() { gen++; busy = false; stage.replaceChildren(); props.clear(); }
   function checkTheme() {
     if (!ready) return; const t = resolveTheme(); if (t === theme) return;
     if (!on) return applyTheme(t);
@@ -1089,6 +1092,9 @@ const FX = (() => {
     fx.innerHTML = '<div id="fx-sky"></div><div id="fx-amb"></div><div id="fx-decor"></div><div id="fx-stage"></div>';
     document.body.insertBefore(fx, document.body.firstChild);
     [sky, amb, decor, stage] = fx.children;
+    actors = document.createElement("div"); actors.id = "fx-actors";
+    actors.setAttribute("aria-hidden", "true");
+    document.body.insertBefore(actors, $("controls"));
     M = new Actor("millie", CAST.millie); W = new Actor("winston", CAST.winston);
     let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => setEnabled(on), 400); });
     setInterval(checkTheme, 60000);

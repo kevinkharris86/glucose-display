@@ -23,7 +23,7 @@ A small web app (`index.html` + `sprites.js`) that displays real-time Dexcom CGM
 ## FX system (Millie the golden retriever & Winston the Holland Lop)
 Seasonal decoration is the `FX` module near the bottom of `index.html`. Christmas and Thanksgiving share the illustrated animal renderer in `christmas.js`, with separate artwork under `assets/christmas/` and `assets/thanksgiving/`.
 
-**Safety rule: the original decoration and Christmas canvas stay behind `#app`.** The Christmas canvas has `pointer-events:none` and protects the header, graph, and controls with masks. Reading details paint above the animals with a contrast shadow. Low, stale, or missing readings keep the Christmas characters at rest. With a current reading at or above the low limit, Christmas scenes play around the clock. These states preserve full Christmas sprite opacity. FX code never changes polling, chart rendering, or the measurement layout.
+Decor and weather stay behind `#app`. Both character renderers paint above the glucose digits, with a clear header, graph, and controls. Their layers pass clicks to the controls. Low, stale, or missing readings keep the illustrated characters at rest. With a current reading at or above the low limit, Christmas scenes play around the clock. These states preserve full Christmas sprite opacity. FX code never changes polling, chart rendering, or the measurement layout.
 
 ### Illustrated Christmas pack (approved November 2026)
 - Supplies the illustrated animals and scenes for Christmas. Thanksgiving has its own illustrated pack.
@@ -43,6 +43,7 @@ Seasonal decoration is the `FX` module near the bottom of `index.html`. Christma
 - Eight scenes share the Christmas scheduler and layout protections. The pumpkin rolls in for Winston's perch, stays for hide-and-seek, then rolls away. The rotation also includes a cuddle, leaf chase, greeting, gust, orchard parade, and Millie's turkey dinner.
 - Winston's source sheet has uneven row heights. Align the original rows at y=0, 310, 595, 885, and the bottom of the sheet before packing. These bounds preserve the full ears and head in the standing poses.
 - Built-in ImageGen produced `assets/thanksgiving/millie-turkey.png` from the Thanksgiving Millie reference and `assets/thanksgiving/roast-turkey.png` as a separate prop. The prompts specified a transparent 4×4 sheet of full-body pickup, carry, lie-down, bite, and lip-lick poses, and a matching whole painted roast in side view.
+- The built-in ImageGen prompt for `assets/thanksgiving/millie-turkey-walk.png` specified sixteen right-facing stride poses with a locked silhouette scale, stable head and turkey grip, pronounced forepaw reach, planted contact, and recovery. The renderer ties the walk cycle to travel distance. The eating sequence spends about 13 seconds on progressively smaller bites and chewing.
 - Preview the pumpkin pair with `?demo&theme=thanksgiving&xscene=pumpkin-perch&fast` or Millie's dinner with `?demo&theme=thanksgiving&xscene=turkey-dinner&fast`. In Auto mode, Thanksgiving has priority on the fourth Thursday of November. Christmas resumes on Friday and stays active through December 30.
 
 ### Other seasons
