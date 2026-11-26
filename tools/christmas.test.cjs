@@ -212,13 +212,13 @@ test('hide/show and rapid toggles do not leave background loops running',async()
   h.document.hidden=false;h.listeners.visibilitychange();assert.equal(h.running,true);
   await h.api.setEnabled(false);assert.equal(h.running,false);
 });
-test('all seven Thanksgiving scenes share the Christmas timing and use opaque illustrated sprites',async()=>{
+test('all eight Thanksgiving scenes share the Christmas timing and use opaque illustrated sprites',async()=>{
   const h=harness('',false,23);
   h.api.reading(healthy);
   await h.api.setEnabled(true,'thanksgiving');
   const starts=[], frames=new Map();
   let previous;
-  for(let t=0;t<540000;t+=40){
+  for(let t=0;t<750000;t+=40){
     h.clearCalls();
     h.step(t);
     const {scene,millieFrame,winstonFrame}=h.canvas.dataset;
@@ -230,14 +230,14 @@ test('all seven Thanksgiving scenes share the Christmas timing and use opaque il
     frames.get(scene)[0].add(millieFrame);
     frames.get(scene)[1].add(winstonFrame);
   }
-  assert.equal(h.api.thanksgivingSceneNames.length,7);
-  assert.equal(frames.size,7);
+  assert.equal(h.api.thanksgivingSceneNames.length,8);
+  assert.equal(frames.size,8);
   assert.ok(starts[0].t>=8000 && starts[0].t<=15000);
   for(let i=1;i<starts.length;i++)assert.ok(starts[i].t-starts[i-1].t>=55000 && starts[i].t-starts[i-1].t<=85000);
   for(const [name,poses] of frames)assert.ok(poses.every(p=>p.size>=4),name);
   await h.api.setEnabled(true,'christmas');
   h.clearCalls();
-  h.step(541000);
+  h.step(751000);
   assert.ok(h.calls.some(c=>c[0]?.url?.includes('/christmas/')));
   assert.ok(!h.calls.some(c=>c[0]?.url?.includes('/thanksgiving/')));
 });
@@ -255,8 +255,12 @@ test('Winston lands on the pumpkin before returning to the ground and settles ne
       const [millie,winston]=h.translations.slice(-2);
       const {millieFrame,winstonFrame}=h.canvas.dataset;
       if(name==='pumpkin-perch'){
-        if(Math.abs(winston[0]-1024*.80)<.01 && winston[1]<ground-40 &&
-            h.calls.some(c=>c[0]?.url?.includes('/pumpkin.png')))perched++;
+        const pumpkin=h.calls.find(c=>c[0]?.url?.includes('/pumpkin.png'));
+        if(Math.abs(winston[0]-1024*.82)<20 && winston[1]<ground-40 && pumpkin){
+          assert.equal(pumpkin.at(-1),1);
+          assert.ok(h.calls.indexOf(pumpkin)<h.calls.findIndex(c=>c[0]?.url?.includes('/winston.png')));
+          perched++;
+        }
         if(perched && Math.abs(winston[1]-ground)<.01)backOnGround=true;
       }else if(Math.abs(millie[0]-winston[0])<115 && millieFrame==='15' && ['14','15'].includes(winstonFrame)){
         cuddled++;
@@ -265,4 +269,54 @@ test('Winston lands on the pumpkin before returning to the ground and settles ne
     if(name==='pumpkin-perch')assert.ok(perched>75 && backOnGround);
     else assert.ok(cuddled>50);
   }
+});
+test('the pumpkin rolls in once, stays through both scenes, and rolls off fully opaque',async()=>{
+  const h=harness('?demo&fast&xscene=pumpkin-perch');
+  h.api.reading(healthy);
+  await h.api.setEnabled(true,'thanksgiving');
+  const starts=[], travel=[];
+  let previous;
+  for(let t=40;t<60000;t+=40){
+    h.clearCalls();
+    h.step(t);
+    const {scene}=h.canvas.dataset;
+    const prop=h.calls.find(c=>c[0]?.url?.includes('/pumpkin.png'));
+    if(scene!==previous){starts.push(scene);previous=scene;}
+    if(travel.length && !prop)break;
+    if(!prop)continue;
+    assert.equal(prop.at(-1),1);
+    const first=h.calls.find(c=>c[0]?.url);
+    const x=h.translations.at(first===prop?-3:-1)[0];
+    travel.push({t,x});
+  }
+  assert.deepEqual(starts.slice(0,4),['pumpkin-perch','rest','pumpkin-hide-and-seek','rest']);
+  assert.ok(travel[0].x>1024 && travel.at(-1).x>1024);
+  assert.ok(travel.some(p=>Math.abs(p.x-1024*.82)<.01));
+  assert.ok(travel.every((p,i)=>!i || p.t-travel[i-1].t===40),'the pumpkin remains between scenes');
+});
+test('the roast drops, hands off to drawn mouth-held frames, and is eaten at the edge',async()=>{
+  const h=harness('?demo&fast&xscene=turkey-dinner');
+  h.api.reading(healthy);
+  await h.api.setEnabled(true,'thanksgiving');
+  const drop=[], carry=[], eaten=[];
+  let attached=false;
+  for(let t=40;t<30000;t+=40){
+    h.clearCalls();
+    h.step(t);
+    if(attached && h.canvas.dataset.scene==='rest')break;
+    const prop=h.calls.find(c=>c[0]?.url?.includes('/roast-turkey.png'));
+    const dog=h.calls.find(c=>c[0]?.url?.includes('/millie-turkey.png'));
+    if(prop){assert.equal(attached,false);drop.push(h.translations.at(-3));}
+    if(!dog)continue;
+    attached=true;
+    const frame=+h.canvas.dataset.millieFrame, x=h.translations.at(-2)[0];
+    if(frame>=4 && frame<=7)carry.push({frame,x});
+    if(frame>=9)eaten.push({frame,x});
+  }
+  assert.ok(drop[0][1]<0);
+  assert.ok(drop.some(p=>p[0]===512 && p[1]>300));
+  assert.equal(new Set(carry.map(p=>p.frame)).size,4);
+  assert.ok(carry.every((p,i)=>!i || p.x<=carry[i-1].x) && carry[0].x-carry.at(-1).x>300);
+  assert.ok(eaten.every(p=>p.x<200));
+  assert.ok(eaten.some(p=>p.frame===14) && eaten.at(-1).frame===15);
 });

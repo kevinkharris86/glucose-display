@@ -40,8 +40,10 @@ Seasonal decoration is the `FX` module near the bottom of `index.html`. Christma
 
 ### Illustrated Thanksgiving pack
 - Thanksgiving Day uses a dark painted autumn orchard with falling maple leaves. Two transparent sheets give Millie and Winston 16 individually drawn poses each, with a pilgrim hat for Millie and an amber neckerchief for Winston. The art was generated using the established Christmas character likenesses and matched to the orchard's painted style.
-- Seven scenes share the Christmas scheduler and layout protections. Winston hops onto a pumpkin to sit and look around, nestles beside Millie, and peeks out from behind a pumpkin. The pair also chase a leaf, greet each other, react to a gust, and lead an orchard parade.
-- Preview the pumpkin scene at `?demo&theme=thanksgiving&xscene=pumpkin-perch&fast`. In Auto mode, Thanksgiving has priority on the fourth Thursday of November. Christmas resumes on Friday and stays active through December 30.
+- Eight scenes share the Christmas scheduler and layout protections. The pumpkin rolls in for Winston's perch, stays for hide-and-seek, then rolls away. The rotation also includes a cuddle, leaf chase, greeting, gust, orchard parade, and Millie's turkey dinner.
+- Winston's source sheet has uneven row heights. Align the original rows at y=0, 310, 595, 885, and the bottom of the sheet before packing. These bounds preserve the full ears and head in the standing poses.
+- Built-in ImageGen produced `assets/thanksgiving/millie-turkey.png` from the Thanksgiving Millie reference and `assets/thanksgiving/roast-turkey.png` as a separate prop. The prompts specified a transparent 4×4 sheet of full-body pickup, carry, lie-down, bite, and lip-lick poses, and a matching whole painted roast in side view.
+- Preview the pumpkin pair with `?demo&theme=thanksgiving&xscene=pumpkin-perch&fast` or Millie's dinner with `?demo&theme=thanksgiving&xscene=turkey-dinner&fast`. In Auto mode, Thanksgiving has priority on the fourth Thursday of November. Christmas resumes on Friday and stays active through December 30.
 
 ### Other seasons
 - **Characters** are cutouts of the family's real photos (white sticker outline), stored as data-URI WebP in `sprites.js` (`window.GD_SPRITES`). If `sprites.js` is missing the app falls back to the plain display.
